@@ -1,414 +1,517 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
 import {
-  Box, Card, Typography, Table, TableHead, TableRow, TableCell, TableBody,
-  TableContainer, TextField, Button, Dialog, DialogTitle, DialogContent,
-  DialogActions, IconButton, Chip, styled, keyframes
+  Box, Card, Typography, TextField, InputAdornment, Button, Chip,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Paper, Modal, Avatar, Container, CircularProgress, Alert, Snackbar,
+  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions
 } from '@mui/material';
-import { Search, Add, Close, Save, ArrowBack, Email, Phone, LocationOn, CalendarToday, Person } from '@mui/icons-material';
-import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-hot-toast';
+import {
+  Search, Add, Person, Close, Save, Edit, Delete, Phone, Home,
+  Refresh, Warning
+} from '@mui/icons-material';
+import { membersService} from '../services/membersService';
+import type { Member, CreateMemberData, UpdateMemberData } from '../services/membersService';
 
-const fadeIn = keyframes`
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-`;
+interface FormData {
+  first_name: string;
+  last_name: string;
+  phone_number: string;
+  place_of_residence: string;
+}
 
-const scaleIn = keyframes`
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-`;
-
-const StyledCard = styled(Card)({
-  background: '#fff',
-  borderRadius: 16,
-  padding: 24,
-  boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-  animation: `${fadeIn} 0.6s ease-out`,
-  transition: 'box-shadow 0.3s ease',
-  '&:hover': { boxShadow: '0 8px 28px rgba(0,0,0,0.1)' },
-});
-
-type Member = {
-  id: number;
-  memberId: number;
-  name: string;
-  email: string;
-  phone: string;
-  address: string;
-  membershipDate: string;
+// Validation utilities
+const normalizePhoneNumber = (phone: string): string => {
+  if (!phone) return '';
+  let cleaned = phone.replace(/[\s\-()]/g, '');
+  if (cleaned.startsWith('0')) {
+    cleaned = '+256' + cleaned.substring(1);
+  }
+  if (!cleaned.startsWith('+')) {
+    cleaned = '+256' + cleaned;
+  }
+  return cleaned;
 };
 
-export default function ManageMembersPage() {
+const validatePhoneNumber = (phone: string): boolean => {
+  if (!phone) return false;
+  const normalized = normalizePhoneNumber(phone);
+  const ugandanPhoneRegex = /^\+256[0-9]{9}$/;
+  return ugandanPhoneRegex.test(normalized);
+};
+
+export default function AddMemberPage() {
   const [members, setMembers] = useState<Member[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
-  const [formData, setFormData] = useState({
-    name: '', email: '', phone: '', address: '', password: '', confirm_password: ''
+  const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; member: Member | null }>({ 
+    open: false, 
+    member: null 
   });
-  const navigate = useNavigate();
-  const token = localStorage.getItem('access_token');
 
-  useEffect(() => {
-    if (!token) {
-      toast.error('Session expired. Please login again.');
-      navigate('/login');
-      return;
-    }
-    fetchMembers();
-  }, [token, navigate]);
+  const [formData, setFormData] = useState<FormData>({
+    first_name: '',
+    last_name: '',
+    phone_number: '',
+    place_of_residence: '',
+  });
 
-  const fetchMembers = async () => {
+  useEffect(() => { fetchMembers(); }, []);
+
+  const fetchMembers = async (query?: string) => {
     try {
-      const response = await axios.get('https://Roy256.pythonanywhere.com/api/members/', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const membersData: Member[] = response.data.results.map((m: any) => ({
-        id: m.membership_id,
-        memberId: m.membership_id,
-        name: m.name,
-        email: m.email,
-        phone: m.phone,
-        address: m.address,
-        membershipDate: m.membership_date,
-      }));
-
-      setMembers(membersData);
-    } catch (error) {
-      console.error('Error fetching members:', error);
-      toast.error('Failed to load members');
+      setLoading(true);
+      const data = await membersService.getAllMembers(query);
+      setMembers(data);
+    } catch (err: any) {
+      console.error('Error fetching members:', err);
+      showSnackbar(err.message || 'Failed to load members', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const filteredMembers = members.filter(
-    (member) =>
-      member.name.toLowerCase().includes(search.toLowerCase()) ||
-      member.email.toLowerCase().includes(search.toLowerCase()) ||
-      member.phone.includes(search)
-  );
+  useEffect(() => {
+    const timer = setTimeout(() => fetchMembers(search || undefined), 500);
+    return () => clearTimeout(timer);
+  }, [search]);
 
-  const handleOpenForm = () => {
-    setFormData({ name: '', email: '', phone: '', address: '', password: '', confirm_password: '' });
+  const showSnackbar = (message: string, severity: 'success' | 'error') => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleOpenForm = (member: Member | null = null) => {
+    setFormErrors({});
+    if (member) {
+      setEditingMember(member);
+      const names = member.full_name.split(' ');
+      setFormData({
+        first_name: names[0] || '',
+        last_name: names.slice(1).join(' ') || '',
+        phone_number: member.phone_number || '',
+        place_of_residence: member.place_of_residence || '',
+      });
+    } else {
+      setEditingMember(null);
+      setFormData({
+        first_name: '',
+        last_name: '',
+        phone_number: '',
+        place_of_residence: '',
+      });
+    }
     setShowForm(true);
   };
 
   const handleCloseForm = () => {
     setShowForm(false);
-    setFormData({ name: '', email: '', phone: '', address: '', password: '', confirm_password: '' });
+    setEditingMember(null);
+    setFormErrors({});
+  };
+
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    // First name validation
+    if (!formData.first_name.trim()) {
+      errors.first_name = 'First name is required';
+    }
+
+    // Last name validation
+    if (!formData.last_name.trim()) {
+      errors.last_name = 'Last name is required';
+    }
+
+    // Phone number validation
+    if (!formData.phone_number.trim()) {
+      errors.phone_number = 'Phone number is required';
+    } else if (!validatePhoneNumber(formData.phone_number)) {
+      errors.phone_number = 'Invalid phone number. Use format: 0752682559 or +256752682559';
+    }
+
+    // Place of residence validation
+    if (!formData.place_of_residence.trim()) {
+      errors.place_of_residence = 'Place of residence is required';
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const handleSaveMember = async () => {
-    if (!formData.name || !formData.email || !formData.phone || !formData.address) {
-      toast.error('Please fill in all fields');
-      return;
-    }
-
-    if (formData.password !== formData.confirm_password) {
-      toast.error('Passwords do not match');
+    // Validate form
+    if (!validateForm()) {
+      showSnackbar('Please fix the errors in the form', 'error');
       return;
     }
 
     try {
-      const response = await axios.post(
-        'https://Roy256.pythonanywhere.com/api/members/',
-        formData,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      toast.success('Member added successfully!');
-      fetchMembers();
+      setSubmitting(true);
+      
+      if (editingMember) {
+        // Update existing member
+        const updateData: UpdateMemberData = {
+          first_name: formData.first_name.trim(),
+          last_name: formData.last_name.trim(),
+          phone_number: normalizePhoneNumber(formData.phone_number),
+          place_of_residence: formData.place_of_residence.trim(),
+        };
+        
+        await membersService.updateMember(editingMember.id, updateData);
+        showSnackbar('Member updated successfully', 'success');
+      } else {
+        // Create new member
+        const createData: CreateMemberData = {
+          first_name: formData.first_name.trim(),
+          last_name: formData.last_name.trim(),
+          phone_number: normalizePhoneNumber(formData.phone_number),
+          place_of_residence: formData.place_of_residence.trim(),
+        };
+        
+        console.log('Creating member with data:', createData);
+        await membersService.createMember(createData);
+        showSnackbar('Member added successfully', 'success');
+      }
+      
       handleCloseForm();
-    } catch (error) {
-      console.error('Error adding member:', error);
-      toast.error('Failed to add member');
+      await fetchMembers();
+    } catch (err: any) {
+      console.error('Error saving member:', err);
+      
+      // Parse error message to provide helpful feedback
+      let errorMessage = 'Failed to save member';
+      
+      const errString = err.message?.toLowerCase() || '';
+      
+      if (errString.includes('phone') && errString.includes('already exists')) {
+        errorMessage = 'This phone number is already registered';
+        setFormErrors({ phone_number: 'This phone number is already registered' });
+      } else if (errString.includes('phone')) {
+        errorMessage = 'Invalid phone number format';
+        setFormErrors({ phone_number: 'Invalid phone number format' });
+      } else if (errString.includes('network') || errString.includes('fetch')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
+      } else if (errString.includes('server error') || errString.includes('500')) {
+        errorMessage = 'Server error. Please try again or contact support if the problem persists.';
+      } else if (errString.includes('unauthorized') || errString.includes('401')) {
+        errorMessage = 'Your session has expired. Please login again.';
+        setTimeout(() => window.location.href = '/login', 2000);
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      showSnackbar(errorMessage, 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleViewDetails = async (member: Member) => {
+  const handleDeleteMember = async (member: Member) => {
+    setDeleteDialog({ open: true, member });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteDialog.member) return;
+    
+    const member = deleteDialog.member;
+    setDeleteDialog({ open: false, member: null });
+    
     try {
-      const response = await axios.get(
-        `https://Roy256.pythonanywhere.com/api/members/${member.memberId}/`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      const m = response.data;
-      setSelectedMember({
-        id: m.membership_id,
-        memberId: m.membership_id,
-        name: m.name,
-        email: m.email,
-        phone: m.phone,
-        address: m.address,
-        membershipDate: m.membership_date,
-      });
-    } catch (error) {
-      console.error('Error fetching member details:', error);
-      toast.error('Failed to fetch member details');
+      setLoading(true);
+      await membersService.deleteMember(member.id);
+      showSnackbar(`${member.full_name || 'Member'} deleted successfully`, 'success');
+      await fetchMembers();
+    } catch (err: any) {
+      console.error('Error deleting member:', err);
+      
+      let errorMessage = 'Failed to delete member';
+      const errString = err.message?.toLowerCase() || '';
+      
+      if (errString.includes('not found') || errString.includes('404')) {
+        errorMessage = 'Member not found. It may have already been deleted.';
+      } else if (errString.includes('permission') || errString.includes('403')) {
+        errorMessage = 'You do not have permission to delete this member.';
+      } else if (errString.includes('network') || errString.includes('fetch')) {
+        errorMessage = 'Network error. Please check your connection and try again.';
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      showSnackbar(errorMessage, 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleBackToList = () => setSelectedMember(null);
+  const cancelDelete = () => {
+    setDeleteDialog({ open: false, member: null });
+  };
 
-  // Member detail view
-  if (selectedMember) {
+  const formatDate = (date: string) => {
+    try { 
+      return new Date(date).toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      }); 
+    } catch { 
+      return 'N/A'; 
+    }
+  };
+
+  if (loading && members.length === 0) {
     return (
-      <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1000, mx: 'auto', background: '#fafafa', minHeight: '100vh' }}>
-        <Button
-          startIcon={<ArrowBack />}
-          onClick={handleBackToList}
-          sx={{
-            mb: 4,
-            textTransform: 'none',
-            fontWeight: 600,
-            color: '#2563eb',
-          }}
-        >
-          Back to Members
-        </Button>
-
-        <StyledCard sx={{ animation: `${scaleIn} 0.5s ease-out` }}>
-          <Box sx={{ display: 'flex', gap: 4, flexDirection: { xs: 'column', md: 'row' } }}>
-            <Box
-              sx={{
-                width: { xs: '100%', md: 200 },
-                height: 200,
-                background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-                borderRadius: 4,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Person sx={{ fontSize: 100, color: 'white' }} />
-            </Box>
-
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#111', mb: 3 }}>
-                {selectedMember.name}
-              </Typography>
-
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Email sx={{ color: '#2563eb', fontSize: 24 }} />
-                  <Box>
-                    <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>Email</Typography>
-                    <Typography variant="body1" sx={{ fontWeight: 500 }}>{selectedMember.email}</Typography>
-                  </Box>
-                </Box>
-
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Phone sx={{ color: '#10b981', fontSize: 24 }} />
-                  <Box>
-                    <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>Phone</Typography>
-                    <Typography variant="body1" sx={{ fontWeight: 500 }}>{selectedMember.phone}</Typography>
-                  </Box>
-                </Box>
-
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <LocationOn sx={{ color: '#ef4444', fontSize: 24 }} />
-                  <Box>
-                    <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>Address</Typography>
-                    <Typography variant="body1" sx={{ fontWeight: 500 }}>{selectedMember.address}</Typography>
-                  </Box>
-                </Box>
-
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <CalendarToday sx={{ color: '#8b5cf6', fontSize: 24 }} />
-                  <Box>
-                    <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>Member Since</Typography>
-                    <Typography variant="body1" sx={{ fontWeight: 500 }}>{selectedMember.membershipDate}</Typography>
-                  </Box>
-                </Box>
-
-                <Box sx={{ mt: 1 }}>
-                  <Chip
-                    label={`ID: ${selectedMember.memberId}`}
-                    sx={{ background: '#dbeafe', color: '#1e40af', fontWeight: 600 }}
-                  />
-                </Box>
-              </Box>
-            </Box>
-          </Box>
-        </StyledCard>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <CircularProgress />
       </Box>
     );
   }
 
-  // Members list view
   return (
-    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1400, mx: 'auto', background: '#fafafa', minHeight: '100vh' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4, flexWrap: 'wrap', gap: 2 }}>
-        <Box>
-          <Typography variant="h3" sx={{ fontWeight: 700, color: '#111', fontSize: { xs: '1.75rem', md: '2.5rem' } }}>
-            Manage Members
-          </Typography>
-          <Typography variant="body1" sx={{ color: '#666', mt: 0.5 }}>
-            {members.length} total members
-          </Typography>
-        </Box>
-        <Button
-          startIcon={<Add />}
-          variant="contained"
-          onClick={handleOpenForm}
-          sx={{
-            background: '#2563eb',
-            px: 3,
-            py: 1.2,
-            borderRadius: 2,
-            textTransform: 'none',
-            fontWeight: 600,
-            '&:hover': { background: '#1d4ed8' },
-          }}
-        >
-          Add Member
-        </Button>
-      </Box>
-
-      <StyledCard sx={{ mb: 3 }}>
-        <TextField
-          fullWidth
-          placeholder="Search by name, email, or phone..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          InputProps={{
-            startAdornment: <Search sx={{ color: '#94a3b8', mr: 1 }} />,
-          }}
-          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-        />
-      </StyledCard>
-
-      <TableContainer component={StyledCard}>
-        <Table>
-          <TableHead sx={{ background: '#f8fafc' }}>
-            <TableRow>
-              <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Member ID</TableCell>
-              <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Name</TableCell>
-              <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Email</TableCell>
-              <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Phone</TableCell>
-              <TableCell sx={{ fontWeight: 700, color: '#334155' }}>Member Since</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredMembers.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 8 }}>
-                  <Person sx={{ fontSize: 64, color: '#cbd5e1', mb: 2 }} />
-                  <Typography color="text.secondary">No members found</Typography>
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredMembers.map((member) => (
-                <TableRow key={member.id} hover>
-                  <TableCell>
-                    <Chip
-                      label={member.memberId}
-                      size="small"
-                      sx={{ background: '#dbeafe', color: '#1e40af', fontWeight: 600 }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      onClick={() => handleViewDetails(member)}
-                      sx={{
-                        textTransform: 'none',
-                        fontWeight: 600,
-                        color: '#2563eb',
-                        '&:hover': { background: '#eff6ff' },
-                      }}
-                    >
-                      {member.name}
-                    </Button>
-                  </TableCell>
-                  <TableCell>{member.email}</TableCell>
-                  <TableCell>{member.phone}</TableCell>
-                  <TableCell>{member.membershipDate}</TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      <Dialog open={showForm} onClose={handleCloseForm} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="h5" sx={{ fontWeight: 700 }}>Add New Member</Typography>
-            <IconButton onClick={handleCloseForm}>
-              <Close />
-            </IconButton>
+    <Box sx={{ minHeight: '100vh', bgcolor: '#f8fafc', py: 4 }}>
+      <Container maxWidth="lg">
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+          <Typography variant="h4" sx={{ fontWeight: 700 }}>MANAGE MEMBERS</Typography>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button variant="outlined" startIcon={<Refresh />} onClick={() => fetchMembers()}>
+              Refresh
+            </Button>
+            <Button variant="contained" startIcon={<Add />} onClick={() => handleOpenForm()}>
+              Add New Member
+            </Button>
           </Box>
-        </DialogTitle>
-        <DialogContent dividers>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 2 }}>
-            <TextField
-              label="Full Name"
-              fullWidth
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            />
-            <TextField
-              label="Email Address"
-              fullWidth
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-            />
-            <TextField
-              label="Phone Number"
-              fullWidth
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-            />
-            <TextField
-              label="Address"
-              fullWidth
-              multiline
-              rows={3}
-              value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-            />
-            <TextField
-              label="Password"
-              type="password"
-              fullWidth
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-            />
-            <TextField
-              label="Confirm Password"
-              type="password"
-              fullWidth
-              value={formData.confirm_password}
-              onChange={(e) => setFormData({ ...formData, confirm_password: e.target.value })}
-            />
-            <Box sx={{ background: '#eff6ff', p: 2, borderRadius: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CalendarToday sx={{ fontSize: 20, color: '#2563eb' }} />
-              <Typography variant="body2" sx={{ color: '#1e40af' }}>
-                Membership starts today: {new Date().toLocaleDateString()}
+        </Box>
+
+        <TextField 
+          fullWidth 
+          placeholder="Search by name, phone..." 
+          value={search} 
+          onChange={e => setSearch(e.target.value)}
+          InputProps={{ startAdornment: <InputAdornment position="start"><Search /></InputAdornment> }}
+          sx={{ mb: 3, '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }} 
+        />
+
+        <Card sx={{ mb: 3, p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>Total Members:</Typography>
+          <Chip label={members.length} color="primary" />
+        </Card>
+
+        <Card elevation={0} sx={{ border: '1px solid #e2e8f0', borderRadius: 2 }}>
+          <TableContainer component={Paper} elevation={0}>
+            <Table>
+              <TableHead>
+                <TableRow sx={{ bgcolor: '#f1f5f9' }}>
+                  <TableCell sx={{ fontWeight: 600 }}>Member</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Membership ID</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Phone Number</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Place of Residence</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Date Joined</TableCell>
+                  <TableCell align="center" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {members.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                      <Typography color="text.secondary">No members found</Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  members.map((member) => (
+                    <TableRow key={member.id} hover>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Avatar sx={{ bgcolor: '#3b82f6' }}>
+                            {member.full_name?.[0] || '?'}
+                          </Avatar>
+                          <Box>
+                            <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                              {member.full_name || 'No name'}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={member.membership_id} size="small" sx={{ bgcolor: '#dbeafe', color: '#1e40af' }} />
+                      </TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace' }}>{member.phone_number}</TableCell>
+                      <TableCell>{member.place_of_residence}</TableCell>
+                      <TableCell>{formatDate(member.date_joined)}</TableCell>
+                      <TableCell align="center">
+                        <Button 
+                          size="small" 
+                          startIcon={<Edit />} 
+                          onClick={() => handleOpenForm(member)}
+                          sx={{ mr: 1 }}
+                        >
+                          Edit
+                        </Button>
+                        <Button 
+                          size="small" 
+                          startIcon={<Delete />} 
+                          onClick={() => handleDeleteMember(member)} 
+                          color="error"
+                        >
+                          Delete
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Card>
+
+        {/* Form Modal - SIMPLIFIED TO 4 FIELDS */}
+        <Modal open={showForm} onClose={handleCloseForm}>
+          <Box sx={{ 
+            position: 'absolute', 
+            top: '50%', 
+            left: '50%', 
+            transform: 'translate(-50%, -50%)', 
+            width: { xs: '90%', sm: 500 }, 
+            bgcolor: 'background.paper', 
+            borderRadius: 2, 
+            boxShadow: 24, 
+            p: 4, 
+            maxHeight: '90vh', 
+            overflow: 'auto' 
+          }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                {editingMember ? 'Edit' : 'Add'} Member
               </Typography>
+              <Button onClick={handleCloseForm} disabled={submitting}>
+                <Close />
+              </Button>
+            </Box>
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              <TextField 
+                label="First Name" 
+                value={formData.first_name} 
+                onChange={e => setFormData({ ...formData, first_name: e.target.value })} 
+                fullWidth 
+                required
+                error={!!formErrors.first_name}
+                helperText={formErrors.first_name}
+                InputProps={{ startAdornment: <InputAdornment position="start"><Person /></InputAdornment> }} 
+              />
+              <TextField 
+                label="Last Name" 
+                value={formData.last_name} 
+                onChange={e => setFormData({ ...formData, last_name: e.target.value })} 
+                fullWidth 
+                required
+                error={!!formErrors.last_name}
+                helperText={formErrors.last_name}
+                InputProps={{ startAdornment: <InputAdornment position="start"><Person /></InputAdornment> }} 
+              />
+              <TextField 
+                label="Phone Number" 
+                value={formData.phone_number} 
+                onChange={e => setFormData({ ...formData, phone_number: e.target.value })} 
+                fullWidth 
+                required
+                error={!!formErrors.phone_number}
+                helperText={formErrors.phone_number || 'Format: 0752682559 or +256752682559'}
+                InputProps={{ startAdornment: <InputAdornment position="start"><Phone /></InputAdornment> }} 
+              />
+              <TextField 
+                label="Place of Residence" 
+                value={formData.place_of_residence} 
+                onChange={e => setFormData({ ...formData, place_of_residence: e.target.value })} 
+                fullWidth 
+                required
+                error={!!formErrors.place_of_residence}
+                helperText={formErrors.place_of_residence}
+                InputProps={{ startAdornment: <InputAdornment position="start"><Home /></InputAdornment> }} 
+              />
+            </Box>
+
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 4 }}>
+              <Button variant="outlined" onClick={handleCloseForm} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button 
+                variant="contained" 
+                onClick={handleSaveMember} 
+                disabled={submitting}
+                startIcon={submitting ? <CircularProgress size={20} /> : editingMember ? <Save /> : <Add />}
+              >
+                {submitting ? 'Saving...' : editingMember ? 'Update' : 'Save Member'}
+              </Button>
             </Box>
           </Box>
-        </DialogContent>
-        <DialogActions sx={{ p: 3 }}>
-          <Button onClick={handleCloseForm} sx={{ textTransform: 'none', fontWeight: 600 }}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSaveMember}
-            startIcon={<Save />}
-            variant="contained"
-            sx={{
-              background: '#2563eb',
-              textTransform: 'none',
-              fontWeight: 600,
-              '&:hover': { background: '#1d4ed8' },
-            }}
-          >
-            Save Member
-          </Button>
-        </DialogActions>
-      </Dialog>
+        </Modal>
+
+        <Snackbar 
+          open={snackbar.open} 
+          autoHideDuration={6000} 
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        >
+          <Alert severity={snackbar.severity} onClose={() => setSnackbar({ ...snackbar, open: false })}>
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog
+          open={deleteDialog.open}
+          onClose={cancelDelete}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 2 }}>
+            <Warning color="error" fontSize="large" />
+            <Typography variant="h6" component="span" sx={{ fontWeight: 600 }}>
+              Confirm Delete
+            </Typography>
+          </DialogTitle>
+          <DialogContent>
+            <DialogContentText sx={{ fontSize: '1rem', color: 'text.primary' }}>
+              Are you sure you want to delete{' '}
+              <Box component="span" sx={{ fontWeight: 700, color: 'error.main' }}>
+                {deleteDialog.member?.full_name}
+              </Box>
+              ?
+              <Box sx={{ mt: 2, p: 2, bgcolor: '#fff3e0', borderRadius: 1, border: '1px solid #ff9800' }}>
+                <Typography variant="body2" color="text.secondary">
+                  ⚠️ <strong>Warning:</strong> This action cannot be undone. All member data including savings 
+                  history will be permanently removed from the system.
+                </Typography>
+              </Box>
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions sx={{ p: 3, pt: 2 }}>
+            <Button 
+              onClick={cancelDelete} 
+              variant="outlined"
+              size="large"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={confirmDelete} 
+              variant="contained" 
+              color="error" 
+              startIcon={<Delete />}
+              size="large"
+              autoFocus
+            >
+              Delete Member
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Container>
     </Box>
   );
 }

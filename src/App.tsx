@@ -1,39 +1,63 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
 import LoginPage from './pages/Login';
-//import { Toaster } from 'react-hot-toast';
 import ResetPassword from './pages/ResetPassword';
 import DashboardPage from './pages/DashboardPage';
 import SignupPage from './pages/SignupPage';
-import BookTransactionsPage from './pages/BookTransactionsPage';
-import ManageBooksPage from './pages/ManageBooksPage';
+import AddSavingsPage from './pages/AddSavingsPage';
 import ManageMembersPage from './pages/ManageMembersPage';
-import ViewLoansPage from './pages/ViewLoansPage';
+import MonthlySavingsPage from './pages/MonthlySavingsPage';
 import Layout from './components/Pagelayout';
-import { Navigate } from 'react-router-dom';
+import ViewSavingsPage from './pages/ViewSavingsPage';
+import OtpVerificationPage from './pages/OtpVerificationPage';
+import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   return (
-    <Router>
-      {/*<Toaster position="top-right" />*/}
-      <Routes>
-        {/* Public routes */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/signup" element={<SignupPage />} />
+    <AuthProvider>
+      <Router>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          
+          {/* OTP Verification Route */}
+          <Route path="/verify-otp" element={<OtpVerificationPage />} />
 
-        {/* Protected layout */}
-        <Route path="/dashboard" element={<Layout />}>
-          <Route index element={<DashboardPage />} />
-          <Route path="book-transactions" element={<BookTransactionsPage />} />
-          <Route path="manage-book" element={<ManageBooksPage />} />
-          <Route path="manage-member" element={<ManageMembersPage />} />
-          <Route path="view-loan" element={<ViewLoansPage />} />
-        </Route>
+          {/* Protected Change Password Route (outside Layout) */}
+          <Route 
+            path="/reset-password" 
+            element={
+              <ProtectedRoute>
+                <ResetPassword />
+              </ProtectedRoute>
+            } 
+          />
 
-        {/* Default route */}
-        <Route path="" element={<Navigate to="/login" />} />
-      </Routes>
-    </Router>
+          {/* Protected routes wrapped in Layout */}
+          <Route 
+            path="/dashboard" 
+            element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<DashboardPage />} />
+            <Route path="ViewSavingsPage" element={<ViewSavingsPage />} />
+            <Route path="AddSavingsPage" element={<AddSavingsPage />} />
+            <Route path="manage-member" element={<ManageMembersPage />} />
+            <Route path="MonthlySavingsPage" element={<MonthlySavingsPage />} />
+          </Route>
+
+          {/* Default route */}
+          <Route path="/" element={<Navigate to="/login" replace />} />
+
+          {/* Catch all */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
 }
 

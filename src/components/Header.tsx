@@ -104,13 +104,14 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
         <Box
           sx={{
             position: 'absolute',
+            fontSize:'40px',
             left: '50%',
             transform: 'translateX(-50%)',
             display: { xs: 'none', md: 'block' },
           }}
         >
           <WelcomeText variant="h5" noWrap>
-            Library Management System
+           Havest Haven Sacco Saving Association
           </WelcomeText>
         </Box>
 

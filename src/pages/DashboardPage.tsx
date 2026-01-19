@@ -1,385 +1,605 @@
-// src/DashboardPage.tsx
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Box, Typography, CircularProgress, styled, keyframes, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip } from '@mui/material';
-import { MenuBook, CheckCircle, LocalLibrary, People, Warning, SupervisorAccount, Person } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-hot-toast';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  AreaChart, Area, BarChart, Bar,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
+} from 'recharts';
+import { dashboardService } from '../services/dashboardService';
+import type {
+  DashboardStats, SavingsTrend,
+  WeeklyDeposit, RecentTransaction, TopSaver
+} from '../types/dashboardtypes';
 
-// Animations
-const fadeIn = keyframes`
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-`;
+// MUI Components
+import Box from '@mui/material/Box';
+import Card from '@mui/material/Card';
+import Alert from '@mui/material/Alert';
+import Typography from '@mui/material/Typography';
+import CircularProgress from '@mui/material/CircularProgress';
+import Button from '@mui/material/Button';
+import Paper from '@mui/material/Paper';
+import Divider from '@mui/material/Divider';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
 
-const float = keyframes`
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
-`;
-
-const pulse = keyframes`
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-`;
-
-// Styled Components
-const StatCard = styled(Box)(({ theme }) => ({
-  background: '#fff',
-  borderRadius: 16,
-  padding: '24px',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 20,
-  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-  animation: `${fadeIn} 0.6s ease-out`,
-  '&:hover': {
-    boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-    transform: 'translateY(-4px)',
-  },
-}));
-
-const IconWrapper = styled(Box)(({ color }: { color: string }) => ({
-  width: 56,
-  height: 56,
-  borderRadius: 14,
-  background: `${color}15`,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  animation: `${pulse} 3s ease-in-out infinite`,
-  '& svg': {
-    fontSize: 28,
-    color: color,
-  },
-}));
-
-const ChartCard = styled(Box)({
-  background: '#fff',
-  borderRadius: 20,
-  padding: '32px',
-  boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-  animation: `${fadeIn} 0.8s ease-out`,
-  transition: 'all 0.3s ease',
-  '&:hover': {
-    boxShadow: '0 8px 28px rgba(0,0,0,0.1)',
-  },
-});
-
-interface Stats {
-  totalBooks: number;
-  availableCopies: number;
-  activeLoans: number;
-  totalMembers: number;
-  overdueLoans: number;
-  totalLibrarians: number;
-  totalAuthors: number;
-}
-
-interface RecentLoan {
-  id: number;
-  book_title: string;
-  member_name: string;
-  borrow_date: string;
-  due_date: string;
-  status: string;
-}
-
-interface TopBook {
-  id: number;
-  title: string;
-  author: string;
-  borrow_count: number;
-}
-
-interface RecentMember {
-  id: number;
-  name: string;
-  email: string;
-  join_date: string;
-}
-
-const DashboardPage: React.FC = () => {
-  const [stats, setStats] = useState<Stats>({
-    totalBooks: 0,
-    availableCopies: 0,
-    activeLoans: 0,
-    totalMembers: 0,
-    overdueLoans: 0,
-    totalLibrarians: 0,
-    totalAuthors: 0,
-  });
-  const [recentLoans, setRecentLoans] = useState<RecentLoan[]>([]);
-  const [topBooks, setTopBooks] = useState<TopBook[]>([]);
-  const [recentMembers, setRecentMembers] = useState<RecentMember[]>([]);
+const SavingsDashboard = () => {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [savingsTrendData, setSavingsTrendData] = useState<SavingsTrend[]>([]);
+  const [weeklyDeposits, setWeeklyDeposits] = useState<WeeklyDeposit[]>([]);
+  const [recentTransactions, setRecentTransactions] = useState<RecentTransaction[]>([]);
+  const [topSavers, setTopSavers] = useState<TopSaver[]>([]);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      toast.error('Session expired. Please login again.');
-      navigate('/login');
+    if (!dashboardService.isAuthenticated()) {
+      setError('Please login to view the dashboard');
+      setLoading(false);
       return;
     }
 
-    const config = { headers: { Authorization: `Bearer ${token}` } };
-    const baseUrl = 'https://Roy256.pythonanywhere.com/api';
+    fetchAllData();
+  }, []);
 
-    const fetchData = async () => {
-      try {
-        const [booksRes, loansRes, membersRes, overdueRes, librariansRes, authorsRes, recentLoansRes, topBooksRes, recentMembersRes] = await Promise.all([
-          axios.get(`${baseUrl}/books/`, config),
-          axios.get(`${baseUrl}/loans/`, config),
-          axios.get(`${baseUrl}/members/`, config),
-          axios.get(`${baseUrl}/loans/overdue/`, config).catch(() => ({ data: { results: [] } })),
-          axios.get(`${baseUrl}/librarians/`, config).catch(() => ({ data: { results: [] } })),
-          axios.get(`${baseUrl}/authors/`, config).catch(() => ({ data: { results: [] } })),
-          axios.get(`${baseUrl}/loans/?limit=5`, config).catch(() => ({ data: { results: [] } })),
-          axios.get(`${baseUrl}/books/?ordering=-borrow_count&limit=5`, config).catch(() => ({ data: { results: [] } })),
-          axios.get(`${baseUrl}/members/?ordering=-join_date&limit=5`, config).catch(() => ({ data: { results: [] } })),
-        ]);
+  const fetchAllData = async () => {
+    setLoading(true);
+    setError(null);
 
-        const books = booksRes.data.results || [];
-        const availableCopies = books.reduce((sum: number, b: any) =>
-          sum + Number(b.copies_available ?? b.copies ?? 0), 0
-        );
+    try {
+      const data = await dashboardService.getAllDashboardData();
 
-        setStats({
-          totalBooks: booksRes.data.count ?? books.length,
-          availableCopies,
-          activeLoans: loansRes.data.count ?? loansRes.data.results?.length ?? 0,
-          totalMembers: membersRes.data.count ?? membersRes.data.results?.length ?? 0,
-          overdueLoans: overdueRes.data.count ?? overdueRes.data.results?.length ?? 0,
-          totalLibrarians: librariansRes.data.count ?? librariansRes.data.results?.length ?? 0,
-          totalAuthors: authorsRes.data.count ?? authorsRes.data.results?.length ?? 0,
-        });
+      setStats(data.stats);
+      setSavingsTrendData(data.trends);
+      setWeeklyDeposits(data.weeklyDeposits);
+      setRecentTransactions(data.transactions);
+      setTopSavers(data.topSavers);
 
-        setRecentLoans(recentLoansRes.data.results?.slice(0, 5) || []);
-        setTopBooks(topBooksRes.data.results?.slice(0, 5) || []);
-        setRecentMembers(recentMembersRes.data.results?.slice(0, 5) || []);
-      } catch (err) {
-        toast.error('Failed to load dashboard data');
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch dashboard data';
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchData();
-  }, [navigate]);
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('en-UG', {
+      style: 'currency',
+      currency: 'UGX',
+      minimumFractionDigits: 0,
+    }).format(amount);
 
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-UG', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  // --------------------------------------------
+  // LOADING SCREEN
+  // --------------------------------------------
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '70vh' }}>
-        <CircularProgress sx={{ color: '#2563eb' }} />
+      <Box
+        display="flex"
+        flexDirection="column"
+        height="70vh"
+        justifyContent="center"
+        alignItems="center"
+        px={2}
+      >
+        <CircularProgress size={60} thickness={4} />
+        <Typography mt={3} color="#4a5568" fontSize={{ xs: '16px', sm: '20px' }} fontWeight={600}>
+          Loading dashboard...
+        </Typography>
       </Box>
     );
   }
 
-  const cards = [
-    { title: 'Book Titles', value: stats.totalBooks, icon: MenuBook, color: '#2563eb' },
-    { title: 'Available Copies', value: stats.availableCopies, icon: CheckCircle, color: '#10b981' },
-    { title: 'Active Loans', value: stats.activeLoans, icon: LocalLibrary, color: '#f59e0b' },
-    { title: 'Members', value: stats.totalMembers, icon: People, color: '#8b5cf6' },
-    { title: 'Overdue Loans', value: stats.overdueLoans, icon: Warning, color: stats.overdueLoans > 0 ? '#ef4444' : '#6b7280' },
-    { title: 'Librarians', value: stats.totalLibrarians, icon: SupervisorAccount, color: '#06b6d4' },
-    { title: 'Authors', value: stats.totalAuthors, icon: Person, color: '#84cc16' },
-  ];
+  // --------------------------------------------
+  // ERROR SCREEN
+  // --------------------------------------------
+  if (error) {
+    return (
+      <Box p={{ xs: 2, sm: 5 }} maxWidth="800px" mx="auto">
+        <Alert severity="error" sx={{ mb: 3 }}>
+          <Typography fontWeight={700} mb={1}>Error</Typography>
+          {error}
+        </Alert>
 
-  const pieData = [
-    { name: 'Available', value: stats.availableCopies, color: '#10b981' },
-    { name: 'Active Loans', value: stats.activeLoans, color: '#f59e0b' },
-    { name: 'Overdue', value: stats.overdueLoans, color: '#ef4444' },
-  ];
+        <Typography color="#4a5568">
+          Please make sure you're logged in and the API server is running.
+        </Typography>
 
-  const barData = [
-    { name: 'Titles', value: stats.totalBooks },
-    { name: 'Copies', value: stats.availableCopies },
-    { name: 'Loans', value: stats.activeLoans },
-    { name: 'Members', value: stats.totalMembers },
-    { name: 'Overdue', value: stats.overdueLoans },
-  ];
+        <Button
+          onClick={fetchAllData}
+          sx={{
+            mt: 2,
+            bgcolor: '#667eea',
+            color: 'white',
+            px: 3,
+            py: 1,
+            borderRadius: '8px',
+            fontWeight: 600,
+            '&:hover': { bgcolor: '#5a67d8' }
+          }}
+        >
+          Retry
+        </Button>
+      </Box>
+    );
+  }
 
+  // --------------------------------------------
+  // NO DATA SCREEN
+  // --------------------------------------------
+  if (!stats) {
+    return (
+      <Box p={{ xs: 2, sm: 5 }}>
+        <Alert severity="warning">
+          No dashboard data available
+        </Alert>
+      </Box>
+    );
+  }
+
+  // --------------------------------------------
+  // MAIN DASHBOARD
+  // --------------------------------------------
   return (
-    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1400, mx: 'auto', background: '#fafafa', minHeight: '100vh' }}>
-      {/* Header */}
-      <Box sx={{ mb: 5, animation: `${fadeIn} 0.5s ease-out` }}>
-        <Typography variant="h3" sx={{ fontWeight: 700, color: '#111', mb: 1, fontSize: { xs: '1.75rem', md: '2.5rem' } }}>
-          Library Dashboard
+    <Box
+      p={{ xs: 2, sm: 3, md: 4 }}
+      maxWidth="1600px"
+      mx="auto"
+      minHeight="100vh"
+      sx={{
+        background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)'
+      }}
+    >
+      {/* ---------------- HEADER ---------------- */}
+      <Box mb={{ xs: 3, sm: 5 }}>
+        <Typography
+          fontWeight={800}
+          fontSize={{ xs: '1.75rem', sm: '2.5rem' }}
+          color="#1a202c"
+          mb={1}
+        >
+          💰 Savings Dashboard
         </Typography>
-        <Typography variant="body1" sx={{ color: '#666', fontSize: '0.95rem' }}>
-          Overview of your library statistics
+
+        <Typography 
+          color="#4a5568" 
+          fontSize={{ xs: '0.9rem', sm: '1.1rem' }} 
+          fontWeight={500} 
+          mt={2}
+        >
+          {stats.current_cycle
+            ? `Current Cycle: ${stats.current_cycle.name}`
+            : 'Manage your savings platform and track financial growth'
+          }
         </Typography>
       </Box>
 
-      {/* Stats Cards */}
-      <Box sx={{
-        display: 'grid',
-        gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)', xl: 'repeat(7, 1fr)' },
-        gap: 3,
-        mb: 5
-      }}>
-        {cards.map((card, i) => (
-          <StatCard key={i} sx={{ animationDelay: `${i * 0.1}s` }}>
-            <IconWrapper color={card.color}>
-              <card.icon />
-            </IconWrapper>
-            <Box>
-              <Typography variant="body2" sx={{ color: '#666', fontSize: '0.85rem', mb: 0.5 }}>
-                {card.title}
-              </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#111' }}>
-                {card.value.toLocaleString()}
-              </Typography>
-            </Box>
-          </StatCard>
-        ))}
+      {/* ---------------- STATS CARDS ---------------- */}
+      <Box
+        display="grid"
+        gridTemplateColumns={{ 
+          xs: '1fr', 
+          sm: 'repeat(2, 1fr)', 
+          md: 'repeat(3, 1fr)' 
+        }}
+        gap={{ xs: '16px', sm: '24px' }}
+        mb={{ xs: '24px', sm: '40px' }}
+      >
+
+        {/* TOTAL SAVINGS CARD */}
+        <Card
+          sx={{
+            p: { xs: 2.5, sm: 3 },
+            borderRadius: { xs: '16px', sm: '20px' },
+            boxShadow: '0 10px 30px rgba(17,153,142,0.3)'
+          }}
+        >
+          <Typography 
+            fontSize={{ xs: '16px', sm: '18px' }} 
+            fontWeight={500} 
+            color="#333" 
+            mb={1}
+          >
+            Total Savings
+          </Typography>
+
+          <Typography 
+            fontWeight={800} 
+            fontSize={{ xs: '22px', sm: '28px' }} 
+            color="#333"
+          >
+            {formatCurrency(stats.total_savings)}
+          </Typography>
+
+          <Box display="flex" alignItems="center" gap={1} mt={1}>
+            <Typography
+              fontSize={{ xs: '13px', sm: '14px' }}
+              fontWeight={600}
+              color={stats.growth_percentage >= 0 ? '#10b981' : '#ef4444'}
+            >
+              {stats.growth_percentage >= 0 ? '↑' : '↓'} {Math.abs(stats.growth_percentage)}% growth
+            </Typography>
+          </Box>
+        </Card>
+
+        {/* TOTAL PROFIT */}
+        <Card
+          sx={{
+            p: { xs: 2.5, sm: 3 },
+            borderRadius: { xs: '16px', sm: '20px' },
+            boxShadow: '0 10px 30px rgba(102,126,234,0.3)'
+          }}
+        >
+          <Typography 
+            fontSize={{ xs: '16px', sm: '18px' }} 
+            fontWeight={500} 
+            color="#333" 
+            mb={1}
+          >
+            Total Profit
+          </Typography>
+
+          <Typography 
+            fontWeight={800} 
+            fontSize={{ xs: '22px', sm: '28px' }} 
+            color="#333"
+          >
+            {formatCurrency(stats.total_profit)}
+          </Typography>
+
+          <Typography 
+            mt={1} 
+            fontWeight={600} 
+            color="#333"
+            fontSize={{ xs: '13px', sm: '14px' }}
+          >
+            {stats.profit_margin}% profit margin
+          </Typography>
+        </Card>
+
+        {/* ACTIVE MEMBERS */}
+        <Card
+          sx={{
+            p: { xs: 2.5, sm: 3 },
+            borderRadius: { xs: '16px', sm: '20px' },
+            boxShadow: '0 10px 30px rgba(99,102,241,0.3)',
+            gridColumn: { xs: '1', sm: 'span 2', md: 'auto' }
+          }}
+        >
+          <Typography 
+            fontSize={{ xs: '16px', sm: '18px' }} 
+            fontWeight={500} 
+            color="#333" 
+            mb={1}
+          >
+            Active Members
+          </Typography>
+
+          <Typography 
+            fontWeight={800} 
+            fontSize={{ xs: '22px', sm: '28px' }} 
+            color="#333"
+          >
+            {stats.active_members}
+          </Typography>
+
+          <Typography 
+            mt={1} 
+            fontWeight={600} 
+            color="#333"
+            fontSize={{ xs: '13px', sm: '14px' }}
+          >
+            +{stats.new_members_this_month} new this month
+          </Typography>
+        </Card>
+
       </Box>
 
-      {/* Charts */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, 1fr)' }, gap: 4, mb: 5 }}>
-        <ChartCard sx={{ animationDelay: '0.4s' }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#111', mb: 3 }}>
-            Inventory Distribution
-          </Typography>
-          <ResponsiveContainer width="100%" height={280}>
-            <PieChart>
-              <Pie
-                data={pieData}
-                dataKey="value"
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={100}
-                paddingAngle={4}
-              >
-                {pieData.map((entry, i) => (
-                  <Cell key={i} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </ChartCard>
+      {/* ---------------- CHARTS SECTION ---------------- */}
+      <Box
+        display="grid"
+        gridTemplateColumns={{ xs: '1fr', lg: 'repeat(2, 1fr)' }}
+        gap={{ xs: '16px', sm: '24px' }}
+        mb={{ xs: '24px', sm: '32px' }}
+      >
 
-        <ChartCard sx={{ animationDelay: '0.5s' }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#111', mb: 3 }}>
-            Statistics Overview
+        {/* SAVINGS & PROFIT TREND */}
+        <Paper 
+          sx={{ 
+            p: { xs: 2.5, sm: 4 }, 
+            borderRadius: { xs: '16px', sm: '24px' }, 
+            boxShadow: '0 4px 20px rgba(0,0,0,0.08)' 
+          }}
+        >
+          <Typography 
+            fontWeight={700} 
+            fontSize={{ xs: '1.1rem', sm: '1.3rem' }} 
+            color="#1a202c" 
+            mb={3}
+          >
+            📈 Savings & Profit Trend
           </Typography>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={barData}>
-              <XAxis dataKey="name" stroke="#999" style={{ fontSize: '0.85rem' }} />
-              <YAxis stroke="#999" style={{ fontSize: '0.85rem' }} />
-              <Tooltip
-                contentStyle={{
-                  borderRadius: 8,
-                  border: 'none',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                }}
-              />
-              <Bar dataKey="value" fill="#2563eb" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
+
+          {savingsTrendData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={320}>
+              <AreaChart data={savingsTrendData}>
+                <defs>
+                  <linearGradient id="colorSavings" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#667eea" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#667eea" stopOpacity={0.1}/>
+                  </linearGradient>
+
+                  <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f5576c" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#f5576c" stopOpacity={0.1}/>
+                  </linearGradient>
+                </defs>
+
+                <XAxis 
+                  dataKey="month" 
+                  stroke="#999" 
+                  style={{ fontSize: '0.75rem' }}
+                  tick={{ fontSize: 12 }}
+                />
+                <YAxis 
+                  stroke="#999" 
+                  style={{ fontSize: '0.75rem' }}
+                  tick={{ fontSize: 12 }}
+                />
+                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <Legend wrapperStyle={{ fontSize: '0.85rem' }} />
+
+                <Area
+                  type="monotone"
+                  dataKey="savings"
+                  stroke="#667eea"
+                  strokeWidth={3}
+                  fill="url(#colorSavings)"
+                  fillOpacity={1}
+                  name="Total Savings"
+                />
+
+                <Area
+                  type="monotone"
+                  dataKey="profit"
+                  stroke="#f5576c"
+                  strokeWidth={3}
+                  fill="url(#colorProfit)"
+                  fillOpacity={1}
+                  name="Profit"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <Typography color="#999" textAlign="center" py={6}>
+              No trend data available
+            </Typography>
+          )}
+        </Paper>
+
+        {/* WEEKLY DEPOSITS */}
+        <Paper 
+          sx={{ 
+            p: { xs: 2.5, sm: 4 }, 
+            borderRadius: { xs: '16px', sm: '24px' }, 
+            boxShadow: '0 4px 20px rgba(0,0,0,0.08)' 
+          }}
+        >
+          <Typography 
+            fontWeight={700} 
+            fontSize={{ xs: '1.1rem', sm: '1.3rem' }} 
+            color="#1a202c" 
+            mb={3}
+          >
+            📊 Weekly Deposit Activity
+          </Typography>
+
+          {weeklyDeposits.length > 0 ? (
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={weeklyDeposits}>
+                <XAxis 
+                  dataKey="day" 
+                  stroke="#999" 
+                  style={{ fontSize: '0.75rem' }}
+                  tick={{ fontSize: 12 }}
+                />
+                <YAxis 
+                  stroke="#999" 
+                  style={{ fontSize: '0.75rem' }}
+                  tick={{ fontSize: 12 }}
+                />
+                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+
+                <Bar dataKey="amount" fill="#11998e" radius={[12, 12, 0, 0]} name="Deposits" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <Typography color="#999" textAlign="center" py={6}>
+              No deposit data available
+            </Typography>
+          )}
+        </Paper>
+
       </Box>
 
-      {/* Tables Section */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'repeat(3, 1fr)' }, gap: 4 }}>
-        {/* Recent Loans */}
-        <ChartCard sx={{ animationDelay: '0.6s' }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#111', mb: 3 }}>
-            Recent Loans
+      {/* ---------------- TABLES SECTION ---------------- */}
+      <Box
+        display="grid"
+        gridTemplateColumns={{ xs: '1fr', lg: 'repeat(2, 1fr)' }}
+        gap={{ xs: '16px', sm: '24px' }}
+        mb={{ xs: '24px', sm: '32px' }}
+      >
+
+        {/* RECENT TRANSACTIONS */}
+        <Paper 
+          sx={{ 
+            p: { xs: 2.5, sm: 4 }, 
+            borderRadius: { xs: '16px', sm: '24px' }, 
+            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+            overflow: 'hidden'
+          }}
+        >
+          <Typography 
+            fontWeight={700} 
+            fontSize={{ xs: '1.1rem', sm: '1.3rem' }} 
+            color="#1a202c" 
+            mb={3}
+          >
+            🔄 Recent Transactions
           </Typography>
-          <TableContainer component={Paper} sx={{ boxShadow: 'none', background: 'transparent' }}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 600, color: '#666', borderBottom: 'none' }}>Book</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#666', borderBottom: 'none' }}>Member</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#666', borderBottom: 'none' }}>Status</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {recentLoans.map((loan) => (
-                  <TableRow key={loan.id}>
-                    <TableCell sx={{ borderBottom: 'none', py: 1 }}>{loan.book_title}</TableCell>
-                    <TableCell sx={{ borderBottom: 'none', py: 1 }}>{loan.member_name}</TableCell>
-                    <TableCell sx={{ borderBottom: 'none', py: 1 }}>
-                      <Chip
-                        label={loan.status}
-                        size="small"
-                        sx={{
-                          backgroundColor: loan.status === 'overdue' ? '#fee2e2' : '#dbeafe',
-                          color: loan.status === 'overdue' ? '#dc2626' : '#2563eb',
-                          fontSize: '0.7rem'
-                        }}
-                      />
+
+          {recentTransactions.length > 0 ? (
+            <TableContainer sx={{ maxHeight: 400 }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                      Member
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                      Amount
+                    </TableCell>
+                    <TableCell 
+                      sx={{ 
+                        fontWeight: 700, 
+                        fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                        display: { xs: 'none', sm: 'table-cell' }
+                      }}
+                    >
+                      Date
                     </TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </ChartCard>
+                </TableHead>
+                <TableBody>
+                  {recentTransactions.map((transaction, index) => (
+                    <TableRow key={index} hover>
+                      <TableCell sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                        {transaction.member.first_name} {transaction.member.last_name}
+                      </TableCell>
+                      <TableCell 
+                        sx={{ 
+                          fontWeight: 600, 
+                          color: '#10b981',
+                          fontSize: { xs: '0.75rem', sm: '0.875rem' }
+                        }}
+                      >
+                        {formatCurrency(transaction.amount)}
+                      </TableCell>
+                      <TableCell 
+                        sx={{ 
+                          fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                          display: { xs: 'none', sm: 'table-cell' }
+                        }}
+                      >
+                        {formatDate(transaction.date)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Typography color="#999" textAlign="center" py={6}>
+              No recent transactions
+            </Typography>
+          )}
+        </Paper>
 
-        {/* Top Borrowed Books */}
-        <ChartCard sx={{ animationDelay: '0.7s' }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#111', mb: 3 }}>
-            Top Borrowed Books
+        {/* TOP SAVERS */}
+        <Paper 
+          sx={{ 
+            p: { xs: 2.5, sm: 4 }, 
+            borderRadius: { xs: '16px', sm: '24px' }, 
+            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+            overflow: 'hidden'
+          }}
+        >
+          <Typography 
+            fontWeight={700} 
+            fontSize={{ xs: '1.1rem', sm: '1.3rem' }} 
+            color="#1a202c" 
+            mb={3}
+          >
+            🏆 Top Savers
           </Typography>
-          <TableContainer component={Paper} sx={{ boxShadow: 'none', background: 'transparent' }}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 600, color: '#666', borderBottom: 'none' }}>Title</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#666', borderBottom: 'none' }}>Author</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#666', borderBottom: 'none' }}>Borrows</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {topBooks.map((book) => (
-                  <TableRow key={book.id}>
-                    <TableCell sx={{ borderBottom: 'none', py: 1 }}>{book.title}</TableCell>
-                    <TableCell sx={{ borderBottom: 'none', py: 1 }}>{book.author}</TableCell>
-                    <TableCell sx={{ borderBottom: 'none', py: 1, fontWeight: 600 }}>{book.borrow_count}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </ChartCard>
 
-        {/* Recent Members */}
-        <ChartCard sx={{ animationDelay: '0.8s' }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#111', mb: 3 }}>
-            Recent Members
-          </Typography>
-          <TableContainer component={Paper} sx={{ boxShadow: 'none', background: 'transparent' }}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 600, color: '#666', borderBottom: 'none' }}>Name</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#666', borderBottom: 'none' }}>Email</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#666', borderBottom: 'none' }}>Joined</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {recentMembers.map((member) => (
-                  <TableRow key={member.id}>
-                    <TableCell sx={{ borderBottom: 'none', py: 1 }}>{member.name}</TableCell>
-                    <TableCell sx={{ borderBottom: 'none', py: 1 }}>{member.email}</TableCell>
-                    <TableCell sx={{ borderBottom: 'none', py: 1 }}>{new Date(member.join_date).toLocaleDateString()}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </ChartCard>
+          {topSavers.length > 0 ? (
+            <Box>
+              {topSavers.map((saver, index) => (
+                <Box key={index}>
+                  <Box 
+                    display="flex" 
+                    justifyContent="space-between" 
+                    alignItems="center"
+                    py={2}
+                  >
+                    <Box display="flex" alignItems="center" gap={2}>
+                      <Box
+                        sx={{
+                          width: { xs: '32px', sm: '40px' },
+                          height: { xs: '32px', sm: '40px' },
+                          borderRadius: '50%',
+                          bgcolor: index === 0 ? '#ffd700' : index === 1 ? '#c0c0c0' : '#cd7f32',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 800,
+                          fontSize: { xs: '0.9rem', sm: '1rem' },
+                          color: 'white'
+                        }}
+                      >
+                        {index + 1}
+                      </Box>
+                      <Box>
+                        <Typography 
+                          fontWeight={600} 
+                          fontSize={{ xs: '0.9rem', sm: '1rem' }}
+                          color="#1a202c"
+                        >
+                          {saver.name}
+                        </Typography>
+                        <Typography 
+                          fontSize={{ xs: '0.75rem', sm: '0.85rem' }} 
+                          color="#666"
+                        >
+                          Rank #{saver.rank}
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    <Typography 
+                      fontWeight={700} 
+                      fontSize={{ xs: '0.9rem', sm: '1.1rem' }}
+                      color="#667eea"
+                    >
+                      {formatCurrency(saver.total_savings)}
+                    </Typography>
+                  </Box>
+                  {index < topSavers.length - 1 && <Divider />}
+                </Box>
+              ))}
+            </Box>
+          ) : (
+            <Typography color="#999" textAlign="center" py={6}>
+              No top savers data
+            </Typography>
+          )}
+        </Paper>
+
       </Box>
     </Box>
   );
 };
 
-export default DashboardPage;
+export default SavingsDashboard;

@@ -1,7 +1,7 @@
+// ResetPassword.tsx
 import React, { useState, useEffect } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-hot-toast';
 import {
   Box,
   TextField,
@@ -11,8 +11,11 @@ import {
   InputAdornment,
   IconButton,
   Alert,
+  CircularProgress,
 } from '@mui/material';
 import { Visibility, VisibilityOff, Lock, ArrowBack } from '@mui/icons-material';
+import { authService } from '../services/authService';
+import { useAuth } from '../context/AuthContext';
 
 interface FormData {
   old_password: string;
@@ -31,6 +34,7 @@ type FormField = keyof FormData;
 
 function ResetPassword() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [formData, setFormData] = useState<FormData>({
     old_password: '',
     new_password: '',
@@ -45,6 +49,7 @@ function ResetPassword() {
 
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
 
   const handleChange = (field: FormField) => (event: ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -86,31 +91,14 @@ function ResetPassword() {
       return;
     }
 
-    try {
-      const token = localStorage.getItem('access_token'); // get JWT token
-      useEffect(() => {
-        if (!token) {
-          toast.error('Session time Expired! Please Login Again to continue');
-          navigate('/login');
-        }
-      }, [token, navigate]);
-      const response = await fetch('https://Roy256.pythonanywhere.com/api/auth/change-password/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          old_password: formData.old_password,
-          new_password: formData.new_password,
-          confirm_password: formData.confirm_password,
-        }),
-      });
+    setLoading(true);
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || 'Failed to reset password');
-      }
+    try {
+      await authService.changePassword(
+        formData.old_password,
+        formData.new_password,
+        formData.confirm_password
+      );
 
       setSuccess(true);
       setError('');
@@ -121,16 +109,20 @@ function ResetPassword() {
           new_password: '',
           confirm_password: '',
         });
-        setSuccess(false);
-        navigate('/login');
+        
+        // Logout user and redirect to login
+        logout();
+        navigate('/login', { replace: true });
       }, 3000);
     } catch (err: any) {
-      setError(err.message || 'Something went wrong');
+      setError(err.message || 'Failed to change password. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleBackToLogin = () => {
-    navigate('/login');
+  const handleBackToDashboard = () => {
+    navigate('/dashboard');
   };
 
   return (
@@ -140,35 +132,51 @@ function ResetPassword() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'white',
+        background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
         py: 4,
+        px: 3,
       }}
     >
       <Paper
         elevation={3}
         sx={{
-          p: 4,
-          width: '30%',
-          borderRadius: 2,
+          p: { xs: 4, sm: 6 },
+          width: '100%',
+          maxWidth: 500,
+          borderRadius: 3,
+          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.1)',
         }}
       >
         <Button
           startIcon={<ArrowBack />}
-          onClick={handleBackToLogin}
+          onClick={handleBackToDashboard}
           sx={{
-            mb: 2,
-            color: '#666',
+            mb: 3,
+            color: '#64748b',
             textTransform: 'none',
-            '&:hover': { color: '#FF3B3B' },
+            '&:hover': { color: '#16a34a' },
           }}
         >
-          Back to Login
+          Back to Dashboard
         </Button>
 
-        <Box sx={{ textAlign: 'center', mb: 3 }}>
-          <Lock sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
-          <Typography variant="h4" component="h1" gutterBottom>
-            Reset Password
+        <Box sx={{ textAlign: 'center', mb: 4 }}>
+          <Box
+            sx={{
+              width: 80,
+              height: 80,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+            }}
+          >
+            <Lock sx={{ fontSize: 40, color: 'white' }} />
+          </Box>
+          <Typography variant="h4" component="h1" sx={{ fontWeight: 700, mb: 1 }}>
+            Change Password
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Enter your current password and choose a new one
@@ -176,26 +184,29 @@ function ResetPassword() {
         </Box>
 
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
             {error}
           </Alert>
         )}
 
         {success && (
-          <Alert severity="success" sx={{ mb: 2 }}>
+          <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>
             Password successfully updated! Redirecting to login...
           </Alert>
         )}
 
         <Box component="form" onSubmit={handleSubmit}>
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, color: '#334155' }}>
+            Current Password
+          </Typography>
           <TextField
             fullWidth
-            label="Old Password"
             type={showPasswords.old ? 'text' : 'password'}
             value={formData.old_password}
             onChange={handleChange('old_password')}
-            margin="normal"
+            disabled={loading}
             required
+            placeholder="Enter your current password"
             InputProps={{
               endAdornment: (
                 <InputAdornment position="end">
@@ -205,16 +216,29 @@ function ResetPassword() {
                 </InputAdornment>
               ),
             }}
+            sx={{
+              mb: 3,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2,
+                backgroundColor: '#f8fafc',
+                '& fieldset': { borderColor: '#e2e8f0' },
+                '&:hover fieldset': { borderColor: '#16a34a' },
+                '&.Mui-focused fieldset': { borderColor: '#16a34a', borderWidth: 2 },
+              },
+            }}
           />
 
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, color: '#334155' }}>
+            New Password
+          </Typography>
           <TextField
             fullWidth
-            label="New Password"
             type={showPasswords.new ? 'text' : 'password'}
             value={formData.new_password}
             onChange={handleChange('new_password')}
-            margin="normal"
+            disabled={loading}
             required
+            placeholder="Enter your new password"
             helperText="Must be at least 8 characters"
             InputProps={{
               endAdornment: (
@@ -225,16 +249,29 @@ function ResetPassword() {
                 </InputAdornment>
               ),
             }}
+            sx={{
+              mb: 3,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2,
+                backgroundColor: '#f8fafc',
+                '& fieldset': { borderColor: '#e2e8f0' },
+                '&:hover fieldset': { borderColor: '#16a34a' },
+                '&.Mui-focused fieldset': { borderColor: '#16a34a', borderWidth: 2 },
+              },
+            }}
           />
 
+          <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, color: '#334155' }}>
+            Confirm New Password
+          </Typography>
           <TextField
             fullWidth
-            label="Confirm New Password"
             type={showPasswords.confirm ? 'text' : 'password'}
             value={formData.confirm_password}
             onChange={handleChange('confirm_password')}
-            margin="normal"
+            disabled={loading}
             required
+            placeholder="Re-enter your new password"
             InputProps={{
               endAdornment: (
                 <InputAdornment position="end">
@@ -244,6 +281,16 @@ function ResetPassword() {
                 </InputAdornment>
               ),
             }}
+            sx={{
+              mb: 4,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2,
+                backgroundColor: '#f8fafc',
+                '& fieldset': { borderColor: '#e2e8f0' },
+                '&:hover fieldset': { borderColor: '#16a34a' },
+                '&.Mui-focused fieldset': { borderColor: '#16a34a', borderWidth: 2 },
+              },
+            }}
           />
 
           <Button
@@ -251,20 +298,35 @@ function ResetPassword() {
             fullWidth
             variant="contained"
             size="large"
+            disabled={loading}
             sx={{
-              mt: 3,
-              mb: 2,
-              py: 1.5,
-              background: 'linear-gradient(135deg, #FF6B6B 0%, #FF3B3B 100%)',
-              boxShadow: '0 4px 12px rgba(255, 59, 59, 0.3)',
+              py: 1.75,
+              borderRadius: 2,
+              textTransform: 'none',
+              fontSize: '1rem',
+              fontWeight: 600,
+              bgcolor: '#16a34a',
+              boxShadow: '0 4px 14px rgba(22, 163, 74, 0.25)',
               '&:hover': {
-                background: 'linear-gradient(135deg, #FF5252 0%, #E63535 100%)',
-                boxShadow: '0 6px 16px rgba(255, 59, 59, 0.4)',
+                bgcolor: '#15803d',
+                boxShadow: '0 6px 20px rgba(22, 163, 74, 0.35)',
+                transform: 'translateY(-1px)',
               },
+              '&:disabled': {
+                bgcolor: '#cbd5e1',
+                boxShadow: 'none',
+              },
+              transition: 'all 0.2s',
             }}
           >
-            Reset Password
+            {loading ? <CircularProgress size={24} color="inherit" /> : 'Change Password'}
           </Button>
+        </Box>
+
+        <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid #e2e8f0', textAlign: 'center' }}>
+          <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+            Make sure your password is strong and unique. You'll be logged out after changing your password.
+          </Typography>
         </Box>
       </Paper>
     </Box>
