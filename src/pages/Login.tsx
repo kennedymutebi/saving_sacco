@@ -23,6 +23,8 @@ import {
 } from '@mui/icons-material';
 import { authService } from '../services/authService';
 import { useAuth } from '../context/AuthContext';
+import { tokens, avatarColor } from '../config/theme';
+
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -35,7 +37,6 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
-  // Redirect if already authenticated
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -44,25 +45,40 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-
     try {
-      // Call the login API
       await authService.login(email, password);
-
-      // Store remember preference
       if (remember) {
         localStorage.setItem('remember_me', 'true');
       } else {
         localStorage.removeItem('remember_me');
       }
-
-      // Navigate to OTP verification page
       navigate('/verify-otp', { state: { email } });
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Shared field sx
+  const fieldSx = {
+    '& .MuiOutlinedInput-root': {
+      borderRadius: tokens.radius.md,
+      backgroundColor: tokens.color.surfaceAlt,
+      fontFamily: tokens.font.base,
+      fontSize: '0.9rem',
+      transition: 'all 0.2s',
+      '& fieldset': { borderColor: tokens.color.border },
+      '&:hover fieldset': { borderColor: tokens.color.primaryLight },
+      '&.Mui-focused': {
+        backgroundColor: tokens.color.surface,
+        '& fieldset': { borderColor: tokens.color.primary, borderWidth: 2 },
+      },
+    },
+    '& .MuiOutlinedInput-input': {
+      padding: { xs: '12px 14px', sm: '14px 14px' },
+      color: tokens.color.textDark,
+    },
   };
 
   return (
@@ -72,8 +88,9 @@ export default function LoginPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#f8fafc',
+        background: tokens.color.bg,
         padding: { xs: 2, sm: 3 },
+        fontFamily: tokens.font.base,
       }}
     >
       <Paper
@@ -82,19 +99,19 @@ export default function LoginPage() {
           display: 'flex',
           flexDirection: { xs: 'column', md: 'row' },
           width: '100%',
-          maxWidth: { xs: '100%', sm: '500px', md: '1100px' },
-          borderRadius: { xs: 2, md: 3 },
+          maxWidth: { xs: '100%', sm: '480px', md: '1060px' },
+          borderRadius: tokens.radius.xxl,
           overflow: 'hidden',
-          minHeight: { xs: 'auto', md: 600 },
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.08)',
+          minHeight: { xs: 'auto', md: 580 },
+          border: `1px solid ${tokens.color.border}`,
+          boxShadow: tokens.shadow.elevated,
         }}
       >
-        {/* Left Side - Branding (Desktop only) */}
+        {/* ── Left — Branding (desktop only) ──────────────────────────── */}
         <Box
           sx={{
             flex: 1,
-            background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+            background: `linear-gradient(135deg, ${tokens.color.primary} 0%, ${tokens.color.primaryLight} 100%)`,
             display: { xs: 'none', md: 'flex' },
             alignItems: 'center',
             justifyContent: 'center',
@@ -105,194 +122,172 @@ export default function LoginPage() {
             overflow: 'hidden',
           }}
         >
-          <Box
-            sx={{
-              position: 'absolute',
-              top: -100,
-              right: -100,
-              width: 300,
-              height: 300,
-              borderRadius: '50%',
-              background: 'rgba(255, 255, 255, 0.08)',
-            }}
-          />
-          <Box
-            sx={{
-              position: 'absolute',
-              bottom: -80,
-              left: -80,
-              width: 250,
-              height: 250,
-              borderRadius: '50%',
-              background: 'rgba(255, 255, 255, 0.08)',
-            }}
-          />
+          {/* Decorative blobs — same style as dashboard StatCard */}
+          <Box sx={{ position: 'absolute', top: -80, right: -80, width: 260, height: 260, borderRadius: '50%', background: 'rgba(255,255,255,0.07)', pointerEvents: 'none' }} />
+          <Box sx={{ position: 'absolute', bottom: -60, left: -60, width: 200, height: 200, borderRadius: '50%', background: 'rgba(255,255,255,0.05)', pointerEvents: 'none' }} />
+          <Box sx={{ position: 'absolute', top: '55%', right: -30, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none' }} />
 
-          <Box sx={{ zIndex: 1, textAlign: 'center', maxWidth: 450 }}>
+          <Box sx={{ zIndex: 1, textAlign: 'center', maxWidth: 400 }}>
+            {/* Logo circle */}
             <Box
               sx={{
-                width: { md: 70, lg: 80 },
-                height: { md: 70, lg: 80 },
+                width: { md: 72, lg: 84 },
+                height: { md: 72, lg: 84 },
                 borderRadius: '50%',
-                background: 'rgba(255, 255, 255, 0.15)',
+                background: 'rgba(255,255,255,0.15)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 margin: '0 auto 24px',
                 backdropFilter: 'blur(10px)',
+                border: '2px solid rgba(255,255,255,0.2)',
               }}
             >
-              <img 
-                src="/profit-rounded-lines-icon.jpg" 
-                alt="Logo" 
-                style={{ 
-                  width: '100%', 
-                  height: '100%', 
-                  borderRadius: '50%' 
-                }} 
+              <img
+                src="/profit-rounded-lines-icon.jpg"
+                alt="Harvest Haven Logo"
+                style={{ width: '100%', height: '100%', borderRadius: '50%' }}
               />
             </Box>
 
-            <Typography 
-              variant="h3" 
-              sx={{ 
-                fontWeight: 700, 
-                mb: 2, 
+            <Typography
+              sx={{
+                fontWeight: 800,
+                fontSize: { md: '2rem', lg: '2.6rem' },
+                lineHeight: 1.1,
+                mb: 1,
+                fontFamily: tokens.font.base,
                 letterSpacing: '-0.5px',
-                fontSize: { md: '2rem', lg: '3rem' }
               }}
             >
               Harvest Haven
             </Typography>
-            <Typography 
-              variant="h5" 
-              sx={{ 
-                mb: 4, 
-                opacity: 0.95, 
+            <Typography
+              sx={{
+                mb: 3,
+                opacity: 0.85,
                 fontWeight: 400,
-                fontSize: { md: '1.25rem', lg: '1.5rem' }
+                fontSize: { md: '1rem', lg: '1.15rem' },
               }}
             >
               Saving Association
             </Typography>
-            <Box
+
+            {/* Divider accent */}
+            <Box sx={{ width: 52, height: 3, background: 'rgba(255,255,255,0.35)', margin: '0 auto 24px', borderRadius: 2 }} />
+
+            <Typography
               sx={{
-                width: 60,
-                height: 3,
-                background: 'rgba(255, 255, 255, 0.4)',
-                margin: '0 auto 24px',
-                borderRadius: 2,
-              }}
-            />
-            <Typography 
-              variant="body1" 
-              sx={{ 
-                opacity: 0.9, 
-                lineHeight: 1.7, 
-                fontSize: { md: '0.95rem', lg: '1.05rem' }
+                opacity: 0.88,
+                lineHeight: 1.75,
+                fontSize: { md: '0.9rem', lg: '1rem' },
               }}
             >
-              Empowering communities through smart savings and financial growth. Your trusted partner in building a secure financial future.
+              Empowering communities through smart savings and financial growth. Your trusted partner in building a secure future.
             </Typography>
+
+            {/* Stats row */}
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: 4,
+                mt: 4,
+                pt: 3,
+                borderTop: '1px solid rgba(255,255,255,0.2)',
+              }}
+            >
+              {[
+                { value: '2,400+', label: 'Members' },
+                { value: '98%', label: 'Retention' },
+                { value: '5 yrs', label: 'Trusted' },
+              ].map(({ value, label }) => (
+                <Box key={label} sx={{ textAlign: 'center' }}>
+                  <Typography sx={{ fontWeight: 800, fontSize: '1.25rem', lineHeight: 1 }}>{value}</Typography>
+                  <Typography sx={{ fontSize: '0.72rem', opacity: 0.75, mt: 0.5, textTransform: 'uppercase', letterSpacing: 0.8 }}>{label}</Typography>
+                </Box>
+              ))}
+            </Box>
           </Box>
         </Box>
 
-        {/* Right Side - Form */}
+        {/* ── Right — Form ─────────────────────────────────────────────── */}
         <Box
           sx={{
             flex: 1,
-            padding: { xs: 3, sm: 4, md: 6, lg: 8 },
+            padding: { xs: 3, sm: 4, md: 5, lg: 6 },
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'center',
-            backgroundColor: '#fff',
+            backgroundColor: tokens.color.surface,
           }}
         >
-          <Box sx={{ maxWidth: 420, mx: 'auto', width: '100%' }}>
-            {/* Mobile Logo/Header - Only shows on mobile */}
-            <Box 
-              sx={{ 
-                display: { xs: 'flex', md: 'none' }, 
+          <Box sx={{ maxWidth: 400, mx: 'auto', width: '100%' }}>
+
+            {/* Mobile header */}
+            <Box
+              sx={{
+                display: { xs: 'flex', md: 'none' },
                 flexDirection: 'column',
                 alignItems: 'center',
                 mb: 4,
                 pb: 3,
-                borderBottom: '2px solid #f1f5f9'
+                borderBottom: `2px solid ${tokens.color.border}`,
               }}
             >
               <Box
                 sx={{
-                  width: 60,
-                  height: 60,
+                  width: 56,
+                  height: 56,
                   borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+                  background: `linear-gradient(135deg, ${tokens.color.primary} 0%, ${tokens.color.primaryLight} 100%)`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  mb: 2,
-                  boxShadow: '0 4px 12px rgba(22, 163, 74, 0.2)',
+                  mb: 1.5,
+                  boxShadow: tokens.shadow.stat,
                 }}
               >
-                <img 
-                  src="/profit-rounded-lines-icon.jpg" 
-                  alt="Logo" 
-                  style={{ width: 60, height: 60, borderRadius: '50%' }} 
-                />
+                <img src="/profit-rounded-lines-icon.jpg" alt="Logo" style={{ width: 56, height: 56, borderRadius: '50%' }} />
               </Box>
-              <Typography 
-                variant="h5" 
-                sx={{ 
-                  fontWeight: 700, 
-                  color: '#16a34a',
-                  fontSize: { xs: '1.25rem', sm: '1.5rem' }
-                }}
-              >
+              <Typography sx={{ fontWeight: 700, color: tokens.color.primary, fontSize: '1.2rem', fontFamily: tokens.font.base }}>
                 Harvest Haven
               </Typography>
-              <Typography 
-                variant="body2" 
-                sx={{ 
-                  color: '#64748b',
-                  fontSize: '0.875rem',
-                  mt: 0.5
-                }}
-              >
+              <Typography sx={{ color: tokens.color.textMuted, fontSize: '0.78rem', mt: 0.25 }}>
                 Saving Association
               </Typography>
             </Box>
 
-            <Typography 
-              variant="h4" 
-              sx={{ 
-                fontWeight: 700, 
-                mb: 1, 
-                color: '#0f172a',
-                fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2.125rem' }
+            {/* Heading */}
+            <Typography
+              sx={{
+                fontWeight: 800,
+                mb: 0.75,
+                color: tokens.color.textDark,
+                fontSize: { xs: '1.5rem', sm: '1.75rem' },
+                fontFamily: tokens.font.base,
+                lineHeight: 1.2,
               }}
             >
               Member Sign In
             </Typography>
-            <Typography 
-              variant="body2" 
-              sx={{ 
-                mb: { xs: 3, md: 4 }, 
-                color: '#64748b', 
-                fontSize: { xs: '0.875rem', md: '0.95rem' }
-              }}
-            >
-              Access your account to manage your savings and investments
+            <Typography sx={{ mb: { xs: 3, md: 3.5 }, color: tokens.color.textMid, fontSize: '0.88rem', lineHeight: 1.6 }}>
+              Access your account to manage your savings
             </Typography>
 
+            {/* Error */}
             {error && (
-              <Alert 
-                severity="error" 
-                sx={{ 
+              <Alert
+                severity="error"
+                sx={{
                   mb: 3,
-                  borderRadius: 2,
-                  border: '1px solid #fecaca',
-                  fontSize: { xs: '0.813rem', sm: '0.875rem' },
-                  '& .MuiAlert-icon': { color: '#dc2626' }
-                }} 
+                  borderRadius: tokens.radius.md,
+                  background: '#FDECEA',
+                  border: `1px solid ${tokens.color.danger}22`,
+                  color: tokens.color.danger,
+                  fontSize: '0.82rem',
+                  '& .MuiAlert-icon': { color: tokens.color.danger },
+                }}
                 onClose={() => setError(null)}
               >
                 {error}
@@ -300,15 +295,9 @@ export default function LoginPage() {
             )}
 
             <Box component="form" onSubmit={handleSubmit}>
-              <Typography 
-                variant="body2" 
-                sx={{ 
-                  mb: 1.5, 
-                  fontWeight: 600, 
-                  color: '#334155', 
-                  fontSize: { xs: '0.813rem', sm: '0.875rem' }
-                }}
-              >
+
+              {/* Email */}
+              <Typography sx={{ mb: 1, fontWeight: 600, color: tokens.color.textDark, fontSize: '0.82rem', letterSpacing: 0.2 }}>
                 Email Address
               </Typography>
               <TextField
@@ -322,42 +311,15 @@ export default function LoginPage() {
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
-                      <EmailIcon sx={{ color: '#94a3b8', fontSize: { xs: 18, sm: 20 } }} />
+                      <EmailIcon sx={{ color: tokens.color.textMuted, fontSize: 18 }} />
                     </InputAdornment>
                   ),
                 }}
-                sx={{
-                  mb: { xs: 2.5, md: 3 },
-                  '& .MuiOutlinedInput-root': {
-                    borderRadius: 2,
-                    backgroundColor: '#f8fafc',
-                    transition: 'all 0.2s',
-                    fontSize: { xs: '0.875rem', sm: '1rem' },
-                    '& fieldset': { borderColor: '#e2e8f0' },
-                    '&:hover': {
-                      backgroundColor: '#fff',
-                      '& fieldset': { borderColor: '#16a34a' },
-                    },
-                    '&.Mui-focused': {
-                      backgroundColor: '#fff',
-                      '& fieldset': { borderColor: '#16a34a', borderWidth: 2 },
-                    },
-                  },
-                  '& .MuiOutlinedInput-input': {
-                    padding: { xs: '12px 14px', sm: '16.5px 14px' },
-                  },
-                }}
+                sx={{ mb: 2.5, ...fieldSx }}
               />
 
-              <Typography 
-                variant="body2" 
-                sx={{ 
-                  mb: 1.5, 
-                  fontWeight: 600, 
-                  color: '#334155', 
-                  fontSize: { xs: '0.813rem', sm: '0.875rem' }
-                }}
-              >
+              {/* Password */}
+              <Typography sx={{ mb: 1, fontWeight: 600, color: tokens.color.textDark, fontSize: '0.82rem', letterSpacing: 0.2 }}>
                 Password
               </Typography>
               <TextField
@@ -371,7 +333,7 @@ export default function LoginPage() {
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
-                      <LockIcon sx={{ color: '#94a3b8', fontSize: { xs: 18, sm: 20 } }} />
+                      <LockIcon sx={{ color: tokens.color.textMuted, fontSize: 18 }} />
                     </InputAdornment>
                   ),
                   endAdornment: (
@@ -380,47 +342,25 @@ export default function LoginPage() {
                         onClick={() => setShowPassword(!showPassword)}
                         edge="end"
                         size="small"
-                        sx={{ color: '#94a3b8' }}
+                        sx={{ color: tokens.color.textMuted, '&:hover': { color: tokens.color.primary } }}
                       >
-                        {showPassword ? 
-                          <VisibilityOff fontSize="small" /> : 
-                          <Visibility fontSize="small" />
-                        }
+                        {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
                       </IconButton>
                     </InputAdornment>
                   ),
                 }}
-                sx={{
-                  mb: 2.5,
-                  '& .MuiOutlinedInput-root': {
-                    borderRadius: 2,
-                    backgroundColor: '#f8fafc',
-                    transition: 'all 0.2s',
-                    fontSize: { xs: '0.875rem', sm: '1rem' },
-                    '& fieldset': { borderColor: '#e2e8f0' },
-                    '&:hover': {
-                      backgroundColor: '#fff',
-                      '& fieldset': { borderColor: '#16a34a' },
-                    },
-                    '&.Mui-focused': {
-                      backgroundColor: '#fff',
-                      '& fieldset': { borderColor: '#16a34a', borderWidth: 2 },
-                    },
-                  },
-                  '& .MuiOutlinedInput-input': {
-                    padding: { xs: '12px 14px', sm: '16.5px 14px' },
-                  },
-                }}
+                sx={{ mb: 2.5, ...fieldSx }}
               />
 
-              <Box 
-                sx={{ 
-                  display: 'flex', 
+              {/* Remember / Forgot */}
+              <Box
+                sx={{
+                  display: 'flex',
                   flexDirection: { xs: 'column', sm: 'row' },
-                  justifyContent: 'space-between', 
-                  alignItems: { xs: 'flex-start', sm: 'center' }, 
-                  mb: { xs: 3, md: 4 },
-                  gap: { xs: 2, sm: 0 }
+                  justifyContent: 'space-between',
+                  alignItems: { xs: 'flex-start', sm: 'center' },
+                  mb: 3.5,
+                  gap: { xs: 1.5, sm: 0 },
                 }}
               >
                 <FormControlLabel
@@ -431,38 +371,34 @@ export default function LoginPage() {
                       size="small"
                       disabled={loading}
                       sx={{
-                        color: '#cbd5e1',
-                        '&.Mui-checked': { color: '#16a34a' },
+                        color: tokens.color.border,
+                        '&.Mui-checked': { color: tokens.color.primary },
+                        p: 0.5,
                       }}
                     />
                   }
                   label={
-                    <Typography 
-                      variant="body2" 
-                      sx={{ 
-                        color: '#64748b', 
-                        fontSize: { xs: '0.813rem', sm: '0.875rem' }
-                      }}
-                    >
+                    <Typography sx={{ color: tokens.color.textMid, fontSize: '0.82rem' }}>
                       Keep me signed in
                     </Typography>
                   }
                 />
                 <Link
                   component={RouterLink}
-                  to="/reset-password"
+                  to="/forgot-password"
                   underline="none"
                   sx={{
-                    fontSize: { xs: '0.813rem', sm: '0.875rem' },
-                    color: '#16a34a',
+                    fontSize: '0.82rem',
+                    color: tokens.color.primary,
                     fontWeight: 600,
-                    '&:hover': { color: '#15803d' },
+                    '&:hover': { color: tokens.color.secondary },
                   }}
                 >
                   Forgot password?
                 </Link>
               </Box>
 
+              {/* Submit */}
               <Button
                 fullWidth
                 type="submit"
@@ -470,48 +406,40 @@ export default function LoginPage() {
                 disabled={loading}
                 sx={{
                   mb: 3,
-                  py: { xs: 1.5, sm: 1.75 },
-                  borderRadius: 2,
+                  py: 1.6,
+                  borderRadius: tokens.radius.md,
                   textTransform: 'none',
-                  fontSize: { xs: '0.938rem', sm: '1rem' },
-                  fontWeight: 600,
-                  bgcolor: '#16a34a',
-                  boxShadow: '0 4px 14px rgba(22, 163, 74, 0.25)',
+                  fontSize: '0.95rem',
+                  fontWeight: 700,
+                  bgcolor: tokens.color.primary,
+                  boxShadow: tokens.shadow.stat,
+                  fontFamily: tokens.font.base,
+                  letterSpacing: 0.2,
                   '&:hover': {
-                    bgcolor: '#15803d',
-                    boxShadow: '0 6px 20px rgba(22, 163, 74, 0.35)',
+                    bgcolor: tokens.color.secondary,
+                    boxShadow: tokens.shadow.elevated,
                     transform: 'translateY(-1px)',
                   },
-                  '&:active': {
-                    transform: 'translateY(0)',
-                  },
-                  '&:disabled': { 
-                    bgcolor: '#cbd5e1',
-                    boxShadow: 'none',
-                  },
+                  '&:active': { transform: 'translateY(0)' },
+                  '&:disabled': { bgcolor: tokens.color.border, boxShadow: 'none' },
                   transition: 'all 0.2s',
                 }}
               >
-                {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In to Account'}
+                {loading ? <CircularProgress size={22} color="inherit" /> : 'Sign In to Account'}
               </Button>
 
-              <Box sx={{ textAlign: 'center', pt: 3, borderTop: '1px solid #e2e8f0' }}>
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    color: '#64748b', 
-                    fontSize: { xs: '0.813rem', sm: '0.9rem' }
-                  }}
-                >
+              {/* Footer */}
+              <Box sx={{ textAlign: 'center', pt: 2.5, borderTop: `1px solid ${tokens.color.border}` }}>
+                <Typography sx={{ color: tokens.color.textMid, fontSize: '0.85rem' }}>
                   New to Harvest Haven?{' '}
                   <Link
                     component={RouterLink}
                     to="/signup"
                     underline="none"
                     sx={{
-                      color: '#16a34a',
-                      fontWeight: 600,
-                      '&:hover': { color: '#15803d', textDecoration: 'underline' },
+                      color: tokens.color.primary,
+                      fontWeight: 700,
+                      '&:hover': { color: tokens.color.secondary, textDecoration: 'underline' },
                     }}
                   >
                     Create an account

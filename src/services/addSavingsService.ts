@@ -29,6 +29,7 @@ export interface CreateSavingsData {
   amount: number;
   date: string;
   comment?: string;
+  send_sms?: boolean;
 }
 
 export interface UpdateSavingsData {

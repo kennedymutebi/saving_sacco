@@ -1,73 +1,154 @@
-# React + TypeScript + Vite
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-Currently, two official plugins are available:
+Harvest Haven SACCO Management System is a web-based application designed to simplify the management of SACCO members and their savings. The system provides administrators with tools to register members, manage savings contributions, monitor monthly savings, and view member financial records through a centralized dashboard.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The application helps SACCO organizations maintain accurate savings records while improving transparency and efficiency in member account management.
 
-## React Compiler
+Features
+Authentication & Security
+User Registration
+Secure Login
+OTP Verification
+Forgot Password Functionality
+Protected Routes
+Session Management
+Dashboard
+Overview of SACCO activities
+Quick access to system modules
+Savings statistics and summaries
+Member Management
+Register new members
+View member details
+Manage member information
+Update member records
+Savings Management
+Add member savings
+Track individual savings records
+View savings history
+Monitor savings growth
+Monthly Savings Tracking
+Record monthly contributions
+Monitor monthly savings trends
+Generate monthly summaries
+Savings Reports
+View savings records
+Track member contributions
+Review transaction history
+Technology Stack
+Frontend
+React
+TypeScript
+Vite
+Routing
+React Router DOM
+State Management
+Context API (AuthContext)
+Styling
+CSS / Custom Components
+Charts & Analytics
+Recharts
+HTTP Requests
+Axios
+Project Structure
+src/
+├── assets/
+├── components/
+│   ├── Layout
+│   └── ProtectedRoute
+│
+├── config/
+├── context/
+│   └── AuthContext
+│
+├── pages/
+│   ├── Login
+│   ├── SignupPage
+│   ├── DashboardPage
+│   ├── AddSavingsPage
+│   ├── ManageMembersPage
+│   ├── MonthlySavingsPage
+│   ├── ViewSavingsPage
+│   ├── OtpVerificationPage
+│   └── ForgotPassword
+│
+├── services/
+├── types/
+└── App.tsx
+System Modules
+Login Module
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Allows registered users to securely access the system.
 
-## Expanding the ESLint configuration
+OTP Verification Module
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Provides an additional layer of security during authentication.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Dashboard Module
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+Displays key SACCO information and navigation links.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Member Management Module
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Enables administrators to manage SACCO members.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Savings Module
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Allows recording and monitoring of member savings contributions.
+
+Monthly Savings Module
+
+Tracks and analyzes monthly savings performance.
+
+Reports Module
+
+Provides access to member savings records and transaction information.
+
+Installation
+Clone the Repository
+git clone https://github.com/your-username/harvest-haven-sacco.git
+Navigate to the Project
+cd harvest-haven-sacco
+Install Dependencies
+npm install
+Start Development Server
+npm run dev
+Build for Production
+npm run build
+Authentication Flow
+User signs up.
+User receives OTP.
+User verifies OTP.
+User logs in.
+AuthContext stores authentication state.
+ProtectedRoute restricts unauthorized access.
+Authenticated users access dashboard features.
+Key Pages
+Route	Description
+/login	User login
+/signup	User registration
+/forgot-password	Password recovery
+/verify-otp	OTP verification
+/dashboard	Main dashboard
+/dashboard/ViewSavingsPage	View savings
+/dashboard/AddSavingsPage	Add savings
+/dashboard/manage-member	Manage members
+/dashboard/MonthlySavingsPage	Monthly savings
+Future Enhancements
+Loan Management
+Withdraw Requests
+Share Capital Tracking
+Financial Reports Export
+SMS Notifications
+Email Notifications
+Mobile Application Integration
+Audit Logs
+Role-Based Permissions
+Author
+
+Kennedy Mutebi
+Bachelor of Science in Computer Science
+Makerere University
+
+License
+
+This project is intended for SACCO management and educational purposes. It may be modified and extended according to organizational requirements.

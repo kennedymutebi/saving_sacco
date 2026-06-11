@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import {
   AreaChart, Area, BarChart, Bar,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
+  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { dashboardService } from '../services/dashboardService';
 import type {
   DashboardStats, SavingsTrend,
-  WeeklyDeposit, RecentTransaction, TopSaver
+  WeeklyDeposit, RecentTransaction, TopSaver,
 } from '../types/dashboardtypes';
-
-// MUI Components
+import { tokens, avatarColor } from '../config/theme';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Alert from '@mui/material/Alert';
@@ -24,7 +23,177 @@ import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
+import Avatar from '@mui/material/Avatar';
+import Chip from '@mui/material/Chip';
+import IconButton from '@mui/material/IconButton';
+import { NotificationsNone, TrendingUp, TrendingDown, Refresh } from '@mui/icons-material';
 
+// ─── Shared Design Tokens (same as ViewSavingsPage) ──────────────────────────
+
+// ─── Avatar palette cycling ───────────────────────────────────────────────────
+
+
+const getInitials = (name: string) =>
+  name.split(' ').slice(0, 2).map((n) => n.charAt(0).toUpperCase()).join('');
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat('en-UG', {
+    style: 'currency',
+    currency: 'UGX',
+    minimumFractionDigits: 0,
+  }).format(amount);
+
+const formatDate = (dateString: string) =>
+  new Date(dateString).toLocaleDateString('en-UG', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+// ─── Custom Tooltip for charts ────────────────────────────────────────────────
+const ChartTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <Box
+      sx={{
+        background: tokens.color.surface,
+        border: `1px solid ${tokens.color.border}`,
+        borderRadius: tokens.radius.md,
+        p: 1.5,
+        boxShadow: tokens.shadow.card,
+        minWidth: 140,
+      }}
+    >
+      <Typography sx={{ fontSize: '0.75rem', color: tokens.color.textMuted, mb: 0.5 }}>
+        {label}
+      </Typography>
+      {payload.map((entry: any, i: number) => (
+        <Typography key={i} sx={{ fontSize: '0.82rem', fontWeight: 700, color: entry.color }}>
+          {entry.name}: {formatCurrency(entry.value)}
+        </Typography>
+      ))}
+    </Box>
+  );
+};
+
+// ─── Stat Card ────────────────────────────────────────────────────────────────
+interface StatCardProps {
+  label: string;
+  value: string;
+  sub: string;
+  positive?: boolean;
+  gradient?: [string, string];
+}
+const StatCard = ({ label, value, sub, positive = true, gradient }: StatCardProps) => (
+  <Card
+    sx={{
+      borderRadius: tokens.radius.xl,
+      p: 3,
+      boxShadow: tokens.shadow.stat,
+      background: gradient
+        ? `linear-gradient(135deg, ${gradient[0]} 0%, ${gradient[1]} 100%)`
+        : tokens.color.surface,
+      color: gradient ? '#fff' : tokens.color.textDark,
+      position: 'relative',
+      overflow: 'hidden',
+    }}
+  >
+    {/* decorative blob */}
+    <Box
+      sx={{
+        position: 'absolute',
+        top: -24,
+        right: -24,
+        width: 96,
+        height: 96,
+        borderRadius: '50%',
+        background: gradient ? 'rgba(255,255,255,0.1)' : tokens.color.primaryPale,
+        pointerEvents: 'none',
+      }}
+    />
+    <Typography
+      sx={{
+        fontSize: '0.75rem',
+        fontWeight: 600,
+        textTransform: 'uppercase',
+        letterSpacing: 0.8,
+        mb: 1,
+        opacity: gradient ? 0.85 : 1,
+        color: gradient ? '#fff' : tokens.color.textMuted,
+      }}
+    >
+      {label}
+    </Typography>
+    <Typography
+      sx={{
+        fontWeight: 800,
+        fontSize: { xs: '1.5rem', sm: '1.75rem' },
+        lineHeight: 1.1,
+        mb: 1,
+        color: gradient ? '#fff' : tokens.color.textDark,
+        wordBreak: 'break-word',
+      }}
+    >
+      {value}
+    </Typography>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      {positive ? (
+        <TrendingUp sx={{ fontSize: '0.9rem', color: gradient ? 'rgba(255,255,255,0.8)' : tokens.color.success }} />
+      ) : (
+        <TrendingDown sx={{ fontSize: '0.9rem', color: gradient ? 'rgba(255,255,255,0.8)' : tokens.color.danger }} />
+      )}
+      <Typography
+        sx={{
+          fontSize: '0.78rem',
+          fontWeight: 600,
+          color: gradient
+            ? 'rgba(255,255,255,0.85)'
+            : positive
+            ? tokens.color.success
+            : tokens.color.danger,
+        }}
+      >
+        {sub}
+      </Typography>
+    </Box>
+  </Card>
+);
+
+// ─── Section Paper ────────────────────────────────────────────────────────────
+const SectionPaper = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <Paper
+    sx={{
+      borderRadius: tokens.radius.xxl,
+      boxShadow: tokens.shadow.card,
+      overflow: 'hidden',
+      background: tokens.color.surface,
+    }}
+  >
+    <Box
+      sx={{
+        px: 3,
+        py: 2,
+        borderBottom: `1px solid ${tokens.color.border}`,
+        background: tokens.color.surfaceAlt,
+      }}
+    >
+      <Typography
+        sx={{
+          fontWeight: 700,
+          fontSize: '1rem',
+          color: tokens.color.textDark,
+          fontFamily: tokens.font.base,
+        }}
+      >
+        {title}
+      </Typography>
+    </Box>
+    <Box sx={{ p: { xs: 2, sm: 3 } }}>{children}</Box>
+  </Paper>
+);
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 const SavingsDashboard = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [savingsTrendData, setSavingsTrendData] = useState<SavingsTrend[]>([]);
@@ -34,99 +203,74 @@ const SavingsDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!dashboardService.isAuthenticated()) {
-      setError('Please login to view the dashboard');
-      setLoading(false);
-      return;
-    }
-
-    fetchAllData();
-  }, []);
+  // REPLACE with this ✅
+// REPLACE with this ✅
+useEffect(() => {
+  fetchAllData();
+}, []);
 
   const fetchAllData = async () => {
     setLoading(true);
     setError(null);
-
     try {
       const data = await dashboardService.getAllDashboardData();
-
       setStats(data.stats);
       setSavingsTrendData(data.trends);
       setWeeklyDeposits(data.weeklyDeposits);
       setRecentTransactions(data.transactions);
       setTopSavers(data.topSavers);
-
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch dashboard data';
-      setError(errorMessage);
+      setError(err instanceof Error ? err.message : 'Failed to fetch dashboard data');
     } finally {
       setLoading(false);
     }
   };
 
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('en-UG', {
-      style: 'currency',
-      currency: 'UGX',
-      minimumFractionDigits: 0,
-    }).format(amount);
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-UG', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
-
-  // --------------------------------------------
-  // LOADING SCREEN
-  // --------------------------------------------
+  // ── Loading ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <Box
-        display="flex"
-        flexDirection="column"
-        height="70vh"
-        justifyContent="center"
-        alignItems="center"
-        px={2}
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: '70vh',
+          justifyContent: 'center',
+          alignItems: 'center',
+          background: tokens.color.bg,
+        }}
       >
-        <CircularProgress size={60} thickness={4} />
-        <Typography mt={3} color="#4a5568" fontSize={{ xs: '16px', sm: '20px' }} fontWeight={600}>
-          Loading dashboard...
+        <CircularProgress size={48} thickness={4} sx={{ color: tokens.color.primary }} />
+        <Typography sx={{ mt: 2.5, color: tokens.color.textMid, fontWeight: 600, fontSize: '1rem' }}>
+          Loading dashboard…
         </Typography>
       </Box>
     );
   }
 
-  // --------------------------------------------
-  // ERROR SCREEN
-  // --------------------------------------------
+  // ── Error ───────────────────────────────────────────────────────────────────
   if (error) {
     return (
-      <Box p={{ xs: 2, sm: 5 }} maxWidth="800px" mx="auto">
-        <Alert severity="error" sx={{ mb: 3 }}>
-          <Typography fontWeight={700} mb={1}>Error</Typography>
+      <Box sx={{ p: { xs: 2, sm: 4 }, maxWidth: 640, mx: 'auto', background: tokens.color.bg, minHeight: '100vh' }}>
+        <Alert severity="error" sx={{ mb: 3, borderRadius: tokens.radius.md }}>
+          <Typography fontWeight={700} mb={0.5}>Error</Typography>
           {error}
         </Alert>
-
-        <Typography color="#4a5568">
-          Please make sure you're logged in and the API server is running.
+        <Typography sx={{ color: tokens.color.textMid, mb: 2 }}>
+          Make sure you're logged in and the API server is running.
         </Typography>
-
         <Button
           onClick={fetchAllData}
+          startIcon={<Refresh />}
           sx={{
-            mt: 2,
-            bgcolor: '#667eea',
-            color: 'white',
+            bgcolor: tokens.color.primary,
+            color: '#fff',
             px: 3,
             py: 1,
-            borderRadius: '8px',
+            borderRadius: tokens.radius.md,
             fontWeight: 600,
-            '&:hover': { bgcolor: '#5a67d8' }
+            textTransform: 'none',
+            '&:hover': { bgcolor: tokens.color.secondary },
+            boxShadow: 'none',
           }}
         >
           Retry
@@ -135,467 +279,493 @@ const SavingsDashboard = () => {
     );
   }
 
-  // --------------------------------------------
-  // NO DATA SCREEN
-  // --------------------------------------------
+  // ── No data ─────────────────────────────────────────────────────────────────
   if (!stats) {
     return (
-      <Box p={{ xs: 2, sm: 5 }}>
-        <Alert severity="warning">
+      <Box sx={{ p: { xs: 2, sm: 4 }, background: tokens.color.bg, minHeight: '100vh' }}>
+        <Alert severity="warning" sx={{ borderRadius: tokens.radius.md }}>
           No dashboard data available
         </Alert>
       </Box>
     );
   }
 
-  // --------------------------------------------
-  // MAIN DASHBOARD
-  // --------------------------------------------
+  // ── Main ────────────────────────────────────────────────────────────────────
   return (
     <Box
-      p={{ xs: 2, sm: 3, md: 4 }}
-      maxWidth="1600px"
-      mx="auto"
-      minHeight="100vh"
       sx={{
-        background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)'
+        background: tokens.color.bg,
+        minHeight: '100vh',
+        width: '100%',
+        overflowX: 'hidden',
+        fontFamily: tokens.font.base,
+        boxSizing: 'border-box',
       }}
     >
-      {/* ---------------- HEADER ---------------- */}
-      <Box mb={{ xs: 3, sm: 5 }}>
-        <Typography
-          fontWeight={800}
-          fontSize={{ xs: '1.75rem', sm: '2.5rem' }}
-          color="#1a202c"
-          mb={1}
-        >
-          💰 Savings Dashboard
-        </Typography>
-
-        <Typography 
-          color="#4a5568" 
-          fontSize={{ xs: '0.9rem', sm: '1.1rem' }} 
-          fontWeight={500} 
-          mt={2}
-        >
-          {stats.current_cycle
-            ? `Current Cycle: ${stats.current_cycle.name}`
-            : 'Manage your savings platform and track financial growth'
-          }
-        </Typography>
+      {/* ── Top App Bar ──────────────────────────────────────────────────── */}
+      <Box
+        sx={{
+          background: tokens.color.surface,
+          borderBottom: `1px solid ${tokens.color.border}`,
+          px: { xs: 2, md: 4 },
+          py: 1.5,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          position: 'sticky',
+          top: 0,
+          zIndex: 100,
+          boxShadow: '0 1px 4px rgba(45,106,79,0.06)',
+        }}
+      >
+        <Box>
+          <Typography
+            sx={{
+              fontWeight: 700,
+              fontSize: '1.15rem',
+              color: tokens.color.textDark,
+              lineHeight: 1.2,
+            }}
+          >
+            Savings Overview
+          </Typography>
+          {stats.current_cycle && (
+            <Typography sx={{ fontSize: '0.72rem', color: tokens.color.textMuted }}>
+              {stats.current_cycle.name}
+            </Typography>
+          )}
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Button
+            onClick={fetchAllData}
+            startIcon={<Refresh sx={{ fontSize: '0.9rem' }} />}
+            size="small"
+            sx={{
+              color: tokens.color.primary,
+              textTransform: 'none',
+              fontWeight: 600,
+              fontSize: '0.78rem',
+              borderRadius: tokens.radius.md,
+              '&:hover': { bgcolor: tokens.color.primaryPale },
+            }}
+          >
+            Refresh
+          </Button>
+          <IconButton sx={{ color: tokens.color.textMid }}>
+            <NotificationsNone />
+          </IconButton>
+        </Box>
       </Box>
 
-      {/* ---------------- STATS CARDS ---------------- */}
+      {/* ── Page content ─────────────────────────────────────────────────── */}
       <Box
-        display="grid"
-        gridTemplateColumns={{ 
-          xs: '1fr', 
-          sm: 'repeat(2, 1fr)', 
-          md: 'repeat(3, 1fr)' 
+        sx={{
+          px: { xs: 2, sm: 3, md: 4 },
+          py: 3,
+          maxWidth: '100%',
+          boxSizing: 'border-box',
+          overflowX: 'hidden',
         }}
-        gap={{ xs: '16px', sm: '24px' }}
-        mb={{ xs: '24px', sm: '40px' }}
       >
 
-        {/* TOTAL SAVINGS CARD */}
+        {/* ── Hero summary card ─────────────────────────────────────────── */}
         <Card
           sx={{
-            p: { xs: 2.5, sm: 3 },
-            borderRadius: { xs: '16px', sm: '20px' },
-            boxShadow: '0 10px 30px rgba(17,153,142,0.3)'
+            borderRadius: tokens.radius.xl,
+            background: `linear-gradient(135deg, ${tokens.color.primary} 0%, ${tokens.color.primaryLight} 100%)`,
+            p: 3,
+            mb: 3,
+            boxShadow: tokens.shadow.elevated,
+            color: '#fff',
+            position: 'relative',
+            overflow: 'hidden',
           }}
         >
-          <Typography 
-            fontSize={{ xs: '16px', sm: '18px' }} 
-            fontWeight={500} 
-            color="#333" 
-            mb={1}
-          >
-            Total Savings
-          </Typography>
+          <Box sx={{ position: 'absolute', top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'rgba(255,255,255,0.07)', pointerEvents: 'none' }} />
+          <Box sx={{ position: 'absolute', bottom: -20, left: '40%', width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.05)', pointerEvents: 'none' }} />
 
-          <Typography 
-            fontWeight={800} 
-            fontSize={{ xs: '22px', sm: '28px' }} 
-            color="#333"
-          >
+          <Chip
+            label="Current Month"
+            size="small"
+            sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: '#fff', fontWeight: 600, fontSize: '0.72rem', mb: 1.5 }}
+          />
+          <Typography sx={{ fontSize: '0.72rem', opacity: 0.8, textTransform: 'uppercase', letterSpacing: 1, mb: 0.5 }}>
+            Savings This Month
+          </Typography>
+          <Typography sx={{ fontWeight: 800, fontSize: { xs: '2rem', sm: '2.6rem' }, lineHeight: 1.05, mb: 0.5 }}>
             {formatCurrency(stats.total_savings)}
           </Typography>
-
-          <Box display="flex" alignItems="center" gap={1} mt={1}>
-            <Typography
-              fontSize={{ xs: '13px', sm: '14px' }}
-              fontWeight={600}
-              color={stats.growth_percentage >= 0 ? '#10b981' : '#ef4444'}
-            >
-              {stats.growth_percentage >= 0 ? '↑' : '↓'} {Math.abs(stats.growth_percentage)}% growth
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            {stats.growth_percentage >= 0
+              ? <TrendingUp sx={{ fontSize: '1rem', opacity: 0.9 }} />
+              : <TrendingDown sx={{ fontSize: '1rem', opacity: 0.9 }} />}
+            <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, opacity: 0.9 }}>
+              {stats.growth_percentage >= 0 ? '+' : ''}{stats.growth_percentage}% vs last month
             </Typography>
           </Box>
         </Card>
 
-        {/* TOTAL PROFIT */}
-        <Card
+        {/* ── Stat cards row ────────────────────────────────────────────── */}
+        <Box
           sx={{
-            p: { xs: 2.5, sm: 3 },
-            borderRadius: { xs: '16px', sm: '20px' },
-            boxShadow: '0 10px 30px rgba(102,126,234,0.3)'
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+            gap: { xs: 2, sm: 2.5 },
+            mb: 3,
           }}
         >
-          <Typography 
-            fontSize={{ xs: '16px', sm: '18px' }} 
-            fontWeight={500} 
-            color="#333" 
-            mb={1}
-          >
-            Total Profit
-          </Typography>
+          <StatCard
+            label="Total Savings"
+            value={formatCurrency(stats.total_savings)}
+            sub={`${Math.abs(stats.growth_percentage)}% growth`}
+            positive={stats.growth_percentage >= 0}
+            gradient={[tokens.color.primary, tokens.color.accent]}
+          />
+          <StatCard
+            label="Total Profit"
+            value={formatCurrency(stats.total_profit)}
+            sub={`${stats.profit_margin}% profit margin`}
+            positive
+          />
+          <StatCard
+            label="Active Members"
+            value={String(stats.active_members)}
+            sub={`+${stats.new_members_this_month} new this month`}
+            positive
+          />
+        </Box>
 
-          <Typography 
-            fontWeight={800} 
-            fontSize={{ xs: '22px', sm: '28px' }} 
-            color="#333"
-          >
-            {formatCurrency(stats.total_profit)}
-          </Typography>
-
-          <Typography 
-            mt={1} 
-            fontWeight={600} 
-            color="#333"
-            fontSize={{ xs: '13px', sm: '14px' }}
-          >
-            {stats.profit_margin}% profit margin
-          </Typography>
-        </Card>
-
-        {/* ACTIVE MEMBERS */}
-        <Card
+        {/* ── Charts row ────────────────────────────────────────────────── */}
+        <Box
           sx={{
-            p: { xs: 2.5, sm: 3 },
-            borderRadius: { xs: '16px', sm: '20px' },
-            boxShadow: '0 10px 30px rgba(99,102,241,0.3)',
-            gridColumn: { xs: '1', sm: 'span 2', md: 'auto' }
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, 1fr)' },
+            gap: { xs: 2, sm: 2.5 },
+            mb: 3,
           }}
         >
-          <Typography 
-            fontSize={{ xs: '16px', sm: '18px' }} 
-            fontWeight={500} 
-            color="#333" 
-            mb={1}
-          >
-            Active Members
-          </Typography>
+          {/* Savings & Profit Trend */}
+          <SectionPaper title="Savings & Profit Trend">
+            {savingsTrendData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <AreaChart data={savingsTrendData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gSavings" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={tokens.color.primary} stopOpacity={0.7} />
+                      <stop offset="95%" stopColor={tokens.color.primary} stopOpacity={0.05} />
+                    </linearGradient>
+                    <linearGradient id="gProfit" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={tokens.color.primaryLight} stopOpacity={0.7} />
+                      <stop offset="95%" stopColor={tokens.color.primaryLight} stopOpacity={0.05} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis
+                    dataKey="month"
+                    stroke={tokens.color.textMuted}
+                    tick={{ fontSize: 11, fill: tokens.color.textMuted }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    stroke={tokens.color.textMuted}
+                    tick={{ fontSize: 10, fill: tokens.color.textMuted }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={60}
+                    tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Legend
+                    wrapperStyle={{ fontSize: '0.78rem', color: tokens.color.textMid, paddingTop: 12 }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="savings"
+                    stroke={tokens.color.primary}
+                    strokeWidth={2.5}
+                    fill="url(#gSavings)"
+                    name="Total Savings"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="profit"
+                    stroke={tokens.color.primaryLight}
+                    strokeWidth={2.5}
+                    fill="url(#gProfit)"
+                    name="Profit"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <Box sx={{ textAlign: 'center', py: 6 }}>
+                <Typography sx={{ color: tokens.color.textMuted }}>No trend data available</Typography>
+              </Box>
+            )}
+          </SectionPaper>
 
-          <Typography 
-            fontWeight={800} 
-            fontSize={{ xs: '22px', sm: '28px' }} 
-            color="#333"
-          >
-            {stats.active_members}
-          </Typography>
+          {/* Weekly Deposits */}
+          <SectionPaper title="Weekly Deposit Activity">
+            {weeklyDeposits.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={weeklyDeposits} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                  <XAxis
+                    dataKey="day"
+                    stroke={tokens.color.textMuted}
+                    tick={{ fontSize: 11, fill: tokens.color.textMuted }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    stroke={tokens.color.textMuted}
+                    tick={{ fontSize: 10, fill: tokens.color.textMuted }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={60}
+                    tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar
+                    dataKey="amount"
+                    fill={tokens.color.primaryLight}
+                    radius={[8, 8, 0, 0]}
+                    name="Deposits"
+                    maxBarSize={48}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <Box sx={{ textAlign: 'center', py: 6 }}>
+                <Typography sx={{ color: tokens.color.textMuted }}>No deposit data available</Typography>
+              </Box>
+            )}
+          </SectionPaper>
+        </Box>
 
-          <Typography 
-            mt={1} 
-            fontWeight={600} 
-            color="#333"
-            fontSize={{ xs: '13px', sm: '14px' }}
-          >
-            +{stats.new_members_this_month} new this month
-          </Typography>
-        </Card>
-
-      </Box>
-
-      {/* ---------------- CHARTS SECTION ---------------- */}
-      <Box
-        display="grid"
-        gridTemplateColumns={{ xs: '1fr', lg: 'repeat(2, 1fr)' }}
-        gap={{ xs: '16px', sm: '24px' }}
-        mb={{ xs: '24px', sm: '32px' }}
-      >
-
-        {/* SAVINGS & PROFIT TREND */}
-        <Paper 
-          sx={{ 
-            p: { xs: 2.5, sm: 4 }, 
-            borderRadius: { xs: '16px', sm: '24px' }, 
-            boxShadow: '0 4px 20px rgba(0,0,0,0.08)' 
+        {/* ── Tables row ────────────────────────────────────────────────── */}
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, 1fr)' },
+            gap: { xs: 2, sm: 2.5 },
+            mb: 3,
           }}
         >
-          <Typography 
-            fontWeight={700} 
-            fontSize={{ xs: '1.1rem', sm: '1.3rem' }} 
-            color="#1a202c" 
-            mb={3}
-          >
-            📈 Savings & Profit Trend
-          </Typography>
-
-          {savingsTrendData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={320}>
-              <AreaChart data={savingsTrendData}>
-                <defs>
-                  <linearGradient id="colorSavings" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#667eea" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="#667eea" stopOpacity={0.1}/>
-                  </linearGradient>
-
-                  <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f5576c" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="#f5576c" stopOpacity={0.1}/>
-                  </linearGradient>
-                </defs>
-
-                <XAxis 
-                  dataKey="month" 
-                  stroke="#999" 
-                  style={{ fontSize: '0.75rem' }}
-                  tick={{ fontSize: 12 }}
-                />
-                <YAxis 
-                  stroke="#999" 
-                  style={{ fontSize: '0.75rem' }}
-                  tick={{ fontSize: 12 }}
-                />
-                <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                <Legend wrapperStyle={{ fontSize: '0.85rem' }} />
-
-                <Area
-                  type="monotone"
-                  dataKey="savings"
-                  stroke="#667eea"
-                  strokeWidth={3}
-                  fill="url(#colorSavings)"
-                  fillOpacity={1}
-                  name="Total Savings"
-                />
-
-                <Area
-                  type="monotone"
-                  dataKey="profit"
-                  stroke="#f5576c"
-                  strokeWidth={3}
-                  fill="url(#colorProfit)"
-                  fillOpacity={1}
-                  name="Profit"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <Typography color="#999" textAlign="center" py={6}>
-              No trend data available
-            </Typography>
-          )}
-        </Paper>
-
-        {/* WEEKLY DEPOSITS */}
-        <Paper 
-          sx={{ 
-            p: { xs: 2.5, sm: 4 }, 
-            borderRadius: { xs: '16px', sm: '24px' }, 
-            boxShadow: '0 4px 20px rgba(0,0,0,0.08)' 
-          }}
-        >
-          <Typography 
-            fontWeight={700} 
-            fontSize={{ xs: '1.1rem', sm: '1.3rem' }} 
-            color="#1a202c" 
-            mb={3}
-          >
-            📊 Weekly Deposit Activity
-          </Typography>
-
-          {weeklyDeposits.length > 0 ? (
-            <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={weeklyDeposits}>
-                <XAxis 
-                  dataKey="day" 
-                  stroke="#999" 
-                  style={{ fontSize: '0.75rem' }}
-                  tick={{ fontSize: 12 }}
-                />
-                <YAxis 
-                  stroke="#999" 
-                  style={{ fontSize: '0.75rem' }}
-                  tick={{ fontSize: 12 }}
-                />
-                <Tooltip formatter={(value: number) => formatCurrency(value)} />
-
-                <Bar dataKey="amount" fill="#11998e" radius={[12, 12, 0, 0]} name="Deposits" />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <Typography color="#999" textAlign="center" py={6}>
-              No deposit data available
-            </Typography>
-          )}
-        </Paper>
-
-      </Box>
-
-      {/* ---------------- TABLES SECTION ---------------- */}
-      <Box
-        display="grid"
-        gridTemplateColumns={{ xs: '1fr', lg: 'repeat(2, 1fr)' }}
-        gap={{ xs: '16px', sm: '24px' }}
-        mb={{ xs: '24px', sm: '32px' }}
-      >
-
-        {/* RECENT TRANSACTIONS */}
-        <Paper 
-          sx={{ 
-            p: { xs: 2.5, sm: 4 }, 
-            borderRadius: { xs: '16px', sm: '24px' }, 
-            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-            overflow: 'hidden'
-          }}
-        >
-          <Typography 
-            fontWeight={700} 
-            fontSize={{ xs: '1.1rem', sm: '1.3rem' }} 
-            color="#1a202c" 
-            mb={3}
-          >
-            🔄 Recent Transactions
-          </Typography>
-
-          {recentTransactions.length > 0 ? (
-            <TableContainer sx={{ maxHeight: 400 }}>
-              <Table size="small" stickyHeader>
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 700, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                      Member
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: 700, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                      Amount
-                    </TableCell>
-                    <TableCell 
-                      sx={{ 
-                        fontWeight: 700, 
-                        fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                        display: { xs: 'none', sm: 'table-cell' }
-                      }}
-                    >
-                      Date
-                    </TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {recentTransactions.map((transaction, index) => (
-                    <TableRow key={index} hover>
-                      <TableCell sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                        {transaction.member.first_name} {transaction.member.last_name}
-                      </TableCell>
-                      <TableCell 
-                        sx={{ 
-                          fontWeight: 600, 
-                          color: '#10b981',
-                          fontSize: { xs: '0.75rem', sm: '0.875rem' }
+          {/* Recent Transactions */}
+          <SectionPaper title="Recent Transactions">
+            {recentTransactions.length > 0 ? (
+              <TableContainer sx={{ overflowX: 'hidden', width: '100%' }}>
+                <Table sx={{ tableLayout: 'fixed', width: '100%' }} size="small">
+                  <TableHead>
+                    <TableRow sx={{ background: tokens.color.surfaceAlt }}>
+                      <TableCell
+                        sx={{
+                          width: '50%',
+                          fontWeight: 700,
+                          fontSize: '0.72rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.5,
+                          color: tokens.color.textMuted,
+                          borderBottom: `2px solid ${tokens.color.border}`,
+                          py: 1.25,
                         }}
                       >
-                        {formatCurrency(transaction.amount)}
+                        Member
                       </TableCell>
-                      <TableCell 
-                        sx={{ 
-                          fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                          display: { xs: 'none', sm: 'table-cell' }
+                      <TableCell
+                        sx={{
+                          width: '30%',
+                          fontWeight: 700,
+                          fontSize: '0.72rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.5,
+                          color: tokens.color.textMuted,
+                          borderBottom: `2px solid ${tokens.color.border}`,
+                          py: 1.25,
                         }}
                       >
-                        {formatDate(transaction.date)}
+                        Amount
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          width: '20%',
+                          fontWeight: 700,
+                          fontSize: '0.72rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.5,
+                          color: tokens.color.textMuted,
+                          borderBottom: `2px solid ${tokens.color.border}`,
+                          py: 1.25,
+                          display: { xs: 'none', sm: 'table-cell' },
+                        }}
+                      >
+                        Date
                       </TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          ) : (
-            <Typography color="#999" textAlign="center" py={6}>
-              No recent transactions
-            </Typography>
-          )}
-        </Paper>
-
-        {/* TOP SAVERS */}
-        <Paper 
-          sx={{ 
-            p: { xs: 2.5, sm: 4 }, 
-            borderRadius: { xs: '16px', sm: '24px' }, 
-            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-            overflow: 'hidden'
-          }}
-        >
-          <Typography 
-            fontWeight={700} 
-            fontSize={{ xs: '1.1rem', sm: '1.3rem' }} 
-            color="#1a202c" 
-            mb={3}
-          >
-            🏆 Top Savers
-          </Typography>
-
-          {topSavers.length > 0 ? (
-            <Box>
-              {topSavers.map((saver, index) => (
-                <Box key={index}>
-                  <Box 
-                    display="flex" 
-                    justifyContent="space-between" 
-                    alignItems="center"
-                    py={2}
-                  >
-                    <Box display="flex" alignItems="center" gap={2}>
-                      <Box
+                  </TableHead>
+                  <TableBody>
+                    {recentTransactions.map((tx, idx) => (
+                      <TableRow
+                        key={idx}
                         sx={{
-                          width: { xs: '32px', sm: '40px' },
-                          height: { xs: '32px', sm: '40px' },
-                          borderRadius: '50%',
-                          bgcolor: index === 0 ? '#ffd700' : index === 1 ? '#c0c0c0' : '#cd7f32',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: 800,
-                          fontSize: { xs: '0.9rem', sm: '1rem' },
-                          color: 'white'
+                          background: idx % 2 === 0 ? tokens.color.surface : tokens.color.surfaceAlt,
+                          '&:hover': { background: tokens.color.primaryPale },
+                          transition: 'background 0.15s',
                         }}
                       >
-                        {index + 1}
-                      </Box>
-                      <Box>
-                        <Typography 
-                          fontWeight={600} 
-                          fontSize={{ xs: '0.9rem', sm: '1rem' }}
-                          color="#1a202c"
+                        <TableCell sx={{ py: 1.25, overflow: 'hidden' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+                            <Avatar
+                              sx={{
+                                bgcolor: avatarColor(idx),
+                                width: 30,
+                                height: 30,
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                flexShrink: 0,
+                              }}
+                            >
+                              {getInitials(`${tx.member.first_name} ${tx.member.last_name}`)}
+                            </Avatar>
+                            <Typography
+                              sx={{
+                                fontSize: '0.82rem',
+                                fontWeight: 600,
+                                color: tokens.color.textDark,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {tx.member.first_name} {tx.member.last_name}
+                            </Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell sx={{ py: 1.25 }}>
+                          <Typography
+                            sx={{
+                              fontSize: '0.82rem',
+                              fontWeight: 700,
+                              color: tokens.color.success,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {formatCurrency(tx.amount)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell
+                          sx={{
+                            py: 1.25,
+                            fontSize: '0.78rem',
+                            color: tokens.color.textMuted,
+                            display: { xs: 'none', sm: 'table-cell' },
+                            whiteSpace: 'nowrap',
+                          }}
                         >
-                          {saver.name}
-                        </Typography>
-                        <Typography 
-                          fontSize={{ xs: '0.75rem', sm: '0.85rem' }} 
-                          color="#666"
-                        >
-                          Rank #{saver.rank}
-                        </Typography>
-                      </Box>
-                    </Box>
+                          {formatDate(tx.date)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Box sx={{ textAlign: 'center', py: 6 }}>
+                <Typography sx={{ color: tokens.color.textMuted }}>No recent transactions</Typography>
+              </Box>
+            )}
+          </SectionPaper>
 
-                    <Typography 
-                      fontWeight={700} 
-                      fontSize={{ xs: '0.9rem', sm: '1.1rem' }}
-                      color="#667eea"
+          {/* Top Savers */}
+          <SectionPaper title="Top Savers">
+            {topSavers.length > 0 ? (
+              <Box>
+                {topSavers.map((saver, idx) => (
+                  <Box key={idx}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        py: 1.75,
+                        px: 0.5,
+                        borderRadius: tokens.radius.md,
+                        '&:hover': { background: tokens.color.primaryPale },
+                        transition: 'background 0.15s',
+                      }}
                     >
-                      {formatCurrency(saver.total_savings)}
-                    </Typography>
+                      {/* Left: rank badge + name */}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+                        <Box
+                          sx={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: '50%',
+                            bgcolor:
+                              idx === 0
+                                ? tokens.color.gold
+                                : idx === 1
+                                ? tokens.color.silver
+                                : idx === 2
+                                ? tokens.color.bronze
+                                : tokens.color.primaryPale,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 800,
+                            fontSize: '0.85rem',
+                            color: idx < 3 ? '#fff' : tokens.color.primary,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {idx + 1}
+                        </Box>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography
+                            sx={{
+                              fontWeight: 600,
+                              fontSize: '0.875rem',
+                              color: tokens.color.textDark,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {saver.name}
+                          </Typography>
+                          <Typography sx={{ fontSize: '0.72rem', color: tokens.color.textMuted }}>
+                            Rank #{saver.rank}
+                          </Typography>
+                        </Box>
+                      </Box>
+
+                      {/* Right: savings amount */}
+                      <Typography
+                        sx={{
+                          fontWeight: 700,
+                          fontSize: '0.875rem',
+                          color: tokens.color.primary,
+                          flexShrink: 0,
+                          ml: 1,
+                        }}
+                      >
+                        {formatCurrency(saver.total_savings)}
+                      </Typography>
+                    </Box>
+                    {idx < topSavers.length - 1 && (
+                      <Divider sx={{ borderColor: tokens.color.border }} />
+                    )}
                   </Box>
-                  {index < topSavers.length - 1 && <Divider />}
-                </Box>
-              ))}
-            </Box>
-          ) : (
-            <Typography color="#999" textAlign="center" py={6}>
-              No top savers data
-            </Typography>
-          )}
-        </Paper>
+                ))}
+              </Box>
+            ) : (
+              <Box sx={{ textAlign: 'center', py: 6 }}>
+                <Typography sx={{ color: tokens.color.textMuted }}>No top savers data</Typography>
+              </Box>
+            )}
+          </SectionPaper>
+        </Box>
 
       </Box>
     </Box>

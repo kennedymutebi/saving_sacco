@@ -8,6 +8,7 @@ import {
   Typography,
   useTheme,
   useMediaQuery,
+  Divider,
 } from '@mui/material';
 import {
   Dashboard,
@@ -16,54 +17,122 @@ import {
   People,
   Description,
   Logout,
+  Close,
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 
-// ---- Tab Component ----
-interface TabProps {
-  value: string;
-  onClick: () => void;
-  icon: React.ReactNode;
-  isActive: boolean;
-  to?: string;
-}
-
-const Tab: React.FC<TabProps> = ({ value, onClick, icon, isActive, to }) => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  
-  return (
-    <Button
-      component={to ? Link : 'button'}
-      to={to}
-      onClick={onClick}
-      startIcon={icon}
-      sx={{
-        justifyContent: 'flex-start',
-        textTransform: 'none',
-        px: { xs: 2, sm: 2.5, md: 3 },
-        py: { xs: 1.25, md: 1.5 },
-        borderRadius: 2,
-        width: '100%',
-        color: isActive ? theme.palette.primary.contrastText : theme.palette.text.primary,
-        backgroundColor: isActive ? theme.palette.primary.main : 'transparent',
-        transition: 'all 0.3s ease',
-        '&:hover': {
-          backgroundColor: isActive ? theme.palette.primary.dark : theme.palette.action.hover,
-        },
-        mb: { xs: 1, md: 1.5 },
-        fontWeight: 500,
-        fontSize: { xs: '0.875rem', md: '0.95rem' },
-        // Add touch-friendly sizing on mobile
-        minHeight: isMobile ? 44 : 'auto',
-      }}
-    >
-      {value}
-    </Button>
-  );
+// ─── Shared Design Tokens (same as ViewSavingsPage & SavingsDashboard) ────────
+const tokens = {
+  color: {
+    bg: '#1B2B24',              // sidebar deep green background
+    bgHover: '#243D31',         // hover state
+    bgActive: '#2D6A4F',        // active item background
+    surface: '#F2F6F3',         // page background (reference)
+    border: 'rgba(255,255,255,0.08)',
+    primary: '#52B788',         // active text / accent
+    primaryLight: '#74C69D',    // icon color on active
+    text: 'rgba(255,255,255,0.92)',
+    textMuted: 'rgba(255,255,255,0.45)',
+    danger: '#C0392B',
+    dangerHover: '#A93226',
+    logo: '#52B788',
+  },
+  radius: {
+    md: '12px',
+    lg: '16px',
+  },
+  font: "'Inter', 'Segoe UI', sans-serif",
 };
 
-// ---- Sidebar Component ----
+// ─── Nav items config ─────────────────────────────────────────────────────────
+const NAV_ITEMS = [
+  { id: 'dashboard',          label: 'Dashboard',       icon: Dashboard,       to: '/dashboard' },
+  { id: 'ViewSavingsPage',    label: 'View Savings',    icon: LibraryBooks,    to: '/dashboard/ViewSavingsPage' },
+  { id: 'AddSavingsPage',     label: 'Add Savings',     icon: Book,            to: '/dashboard/AddSavingsPage' },
+  { id: 'manage-members',     label: 'Add Member',      icon: People,          to: '/dashboard/manage-member' },
+  { id: 'MonthlySavingsPage', label: 'Start the Month', icon: Description,     to: '/dashboard/MonthlySavingsPage' },
+];
+
+// ─── Tab Component ─────────────────────────────────────────────────────────────
+interface TabProps {
+  id: string;
+  label: string;
+  IconComponent: React.ElementType;
+  isActive: boolean;
+  to: string;
+  onClick: () => void;
+}
+
+const NavTab: React.FC<TabProps> = ({ label, IconComponent, isActive, to, onClick }) => (
+  <Button
+    component={Link}
+    to={to}
+    onClick={onClick}
+    sx={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+      gap: 1.5,
+      width: '100%',
+      px: 2,
+      py: 1.25,
+      mb: 0.5,
+      borderRadius: tokens.radius.md,
+      textTransform: 'none',
+      fontFamily: tokens.font,
+      fontWeight: isActive ? 700 : 500,
+      fontSize: '0.9rem',
+      color: isActive ? '#fff' : tokens.color.textMuted,
+      backgroundColor: isActive ? tokens.color.bgActive : 'transparent',
+      boxShadow: isActive ? '0 4px 12px rgba(45,106,79,0.4)' : 'none',
+      transition: 'all 0.18s ease',
+      minHeight: 44,
+      '&:hover': {
+        backgroundColor: isActive ? tokens.color.bgActive : tokens.color.bgHover,
+        color: '#fff',
+      },
+      // left accent bar for active
+      position: 'relative',
+      '&::before': isActive
+        ? {
+            content: '""',
+            position: 'absolute',
+            left: 0,
+            top: '20%',
+            height: '60%',
+            width: 3,
+            borderRadius: '0 4px 4px 0',
+            backgroundColor: tokens.color.primary,
+          }
+        : {},
+    }}
+  >
+    <IconComponent
+      sx={{
+        fontSize: 20,
+        color: isActive ? tokens.color.primary : tokens.color.textMuted,
+        flexShrink: 0,
+        transition: 'color 0.18s',
+      }}
+    />
+    <Typography
+      sx={{
+        fontSize: '0.875rem',
+        fontWeight: isActive ? 700 : 500,
+        color: 'inherit',
+        letterSpacing: isActive ? 0.1 : 0,
+        transition: 'all 0.18s',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+      }}
+    >
+      {label}
+    </Typography>
+  </Button>
+);
+
+// ─── Sidebar Component ────────────────────────────────────────────────────────
 interface SideNavbarProps {
   sideNavActive: boolean;
   handleSideNavActive: () => void;
@@ -74,182 +143,229 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ sideNavActive, handleSideNavAct
   const theme = useTheme();
   const navigate = useNavigate();
   const { logout } = useAuth();
-  
-  // Detect mobile/tablet screens
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const isTablet = useMediaQuery(theme.breakpoints.down('lg'));
 
-  const handleActive = (value: string) => {
-    setActive(value);
-    // Auto-close sidebar on mobile/tablet after selection
-    if (isMobile || isTablet) {
-      handleSideNavActive();
-    }
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isTablet = useMediaQuery(theme.breakpoints.between('md', 'lg'));
+
+  const handleActive = (id: string) => {
+    setActive(id);
+    if (isMobile || isTablet) handleSideNavActive();
   };
 
   const handleLogout = () => {
     try {
-      // Call the logout function from AuthContext
       logout();
-      
-      // Show success message
       toast.success('Logged out successfully');
-      
-      // Redirect to login page
       navigate('/login', { replace: true });
-    } catch (error) {
-      console.error('Logout error:', error);
+    } catch {
       toast.error('Error logging out');
     }
   };
 
-  // Determine drawer width based on screen size
-  const drawerWidth = isMobile ? 260 : isTablet ? 270 : 280;
+  const drawerWidth = isMobile ? 264 : 272;
 
-  return (
-    <Drawer
-      // Use temporary drawer on mobile, persistent on desktop
-      variant={isMobile ? 'temporary' : 'persistent'}
-      open={sideNavActive}
-      onClose={isMobile ? handleSideNavActive : undefined}
-      ModalProps={{
-        keepMounted: true, // Better mobile performance
-      }}
+  // ── Sidebar inner content ───────────────────────────────────────────────────
+  const sidebarContent = (
+    <Box
       sx={{
-        width: drawerWidth,
-        flexShrink: 0,
-        '& .MuiDrawer-paper': {
-          width: drawerWidth,
-          boxSizing: 'border-box',
-          backgroundColor: theme.palette.background.paper,
-          borderRight: isMobile ? 'none' : `1px solid ${theme.palette.divider}`,
-          p: { xs: 2, md: 2 },
-          transition: 'all 0.3s ease',
-          // Add safe area padding for mobile devices with notches
-          paddingTop: { xs: 'max(16px, env(safe-area-inset-top))', md: 2 },
-          paddingBottom: { xs: 'max(16px, env(safe-area-inset-bottom))', md: 2 },
-        },
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        width: '100%',
+        background: tokens.color.bg,
+        fontFamily: tokens.font,
+        overflowX: 'hidden',
+        // safe area support for notched devices
+        paddingTop: 'max(0px, env(safe-area-inset-top))',
+        paddingBottom: 'max(0px, env(safe-area-inset-bottom))',
       }}
     >
+      {/* ── Brand header ──────────────────────────────────────────────── */}
       <Box
         sx={{
+          px: 2.5,
+          pt: 3,
+          pb: 2.5,
           display: 'flex',
-          flexDirection: 'column',
-          height: '100%',
-          width: '100%',
-          py: { xs: 2, md: 3 },
+          alignItems: 'center',
+          justifyContent: 'space-between',
         }}
       >
-        {/* Logo/Title */}
-        <Box
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          {/* Logo container */}
+          <Box
+            sx={{
+              width: 42,
+              height: 42,
+              borderRadius: tokens.radius.md,
+              overflow: 'hidden',
+              flexShrink: 0,
+              border: `2px solid ${tokens.color.bgActive}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              bgcolor: tokens.color.bgActive,
+            }}
+          >
+            <img
+              src="/profit-rounded-lines-icon.jpg"
+              alt="HHSSA logo"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={(e) => {
+                // fallback to initials if image fails
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          </Box>
+          <Box>
+            <Typography
+              sx={{
+                fontWeight: 800,
+                fontSize: '1.05rem',
+                color: '#fff',
+                letterSpacing: '-0.01em',
+                lineHeight: 1.1,
+              }}
+            >
+              HHSSA
+            </Typography>
+            <Typography sx={{ fontSize: '0.68rem', color: tokens.color.textMuted, mt: 0.1 }}>
+              Savings Platform
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* Close button — mobile only */}
+        {isMobile && (
+          <Box
+            component="button"
+            onClick={handleSideNavActive}
+            sx={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: tokens.color.textMuted,
+              p: 0.5,
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              '&:hover': { color: '#fff', bgcolor: tokens.color.bgHover },
+              transition: 'all 0.15s',
+            }}
+          >
+            <Close sx={{ fontSize: 18 }} />
+          </Box>
+        )}
+      </Box>
+
+      <Divider sx={{ borderColor: tokens.color.border, mx: 2, mb: 1 }} />
+
+      {/* ── Nav section label ─────────────────────────────────────────── */}
+      <Typography
+        sx={{
+          fontSize: '0.65rem',
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: 1.2,
+          color: tokens.color.textMuted,
+          px: 2.5,
+          py: 1,
+        }}
+      >
+        Navigation
+      </Typography>
+
+      {/* ── Nav items ─────────────────────────────────────────────────── */}
+      <Box
+        sx={{
+          flex: 1,
+          px: 1.5,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          '&::-webkit-scrollbar': { width: 3 },
+          '&::-webkit-scrollbar-thumb': {
+            bgcolor: tokens.color.bgHover,
+            borderRadius: 4,
+          },
+        }}
+      >
+        {NAV_ITEMS.map((item) => (
+          <NavTab
+            key={item.id}
+            id={item.id}
+            label={item.label}
+            IconComponent={item.icon}
+            isActive={active === item.id}
+            to={item.to}
+            onClick={() => handleActive(item.id)}
+          />
+        ))}
+      </Box>
+
+      {/* ── Footer ────────────────────────────────────────────────────── */}
+      <Box sx={{ px: 1.5, pt: 2, pb: 2.5 }}>
+        <Divider sx={{ borderColor: tokens.color.border, mb: 2 }} />
+        <Button
+          onClick={handleLogout}
+          startIcon={<Logout sx={{ fontSize: 18 }} />}
           sx={{
             display: 'flex',
             alignItems: 'center',
-            gap: { xs: 1.5, md: 2 },
-            mb: { xs: 3, md: 4 },
-            px: { xs: 0.5, md: 0 },
-          }}
-        >
-          <img
-            src="/profit-rounded-lines-icon.jpg"
-            alt="Church Logo"
-            style={{
-              width: isMobile ? '50px' : '60px',
-              height: isMobile ? '50px' : '60px',
-              objectFit: 'contain',
-            }}
-          />
-          <Typography
-            variant="h5"
-            sx={{
-              fontWeight: 400,
-              color: theme.palette.primary.main,
-              letterSpacing: '-0.025em',
-              fontSize: { xs: '1.25rem', sm: '1.35rem', md: '1.5rem' },
-            }}
-          >
-            HHSSA 
-          </Typography>
-        </Box>
-
-        {/* Navigation Tabs */}
-        <Box 
-          sx={{ 
-            flexGrow: 1,
-            // Add scrolling for mobile if nav items are many
-            overflowY: isMobile ? 'auto' : 'visible',
-            overflowX: 'hidden',
-            // Hide scrollbar but keep functionality
-            '&::-webkit-scrollbar': {
-              width: '4px',
-            },
-            '&::-webkit-scrollbar-thumb': {
-              backgroundColor: theme.palette.divider,
-              borderRadius: '4px',
-            },
-          }}
-        >
-          <Tab
-            value="Dashboard"
-            onClick={() => handleActive('dashboard')}
-            icon={<Dashboard sx={{ fontSize: { xs: 20, md: 24 } }} />}
-            isActive={active === 'dashboard'}
-            to="/dashboard"
-          />
-          <Tab
-            value="View Savings"
-            onClick={() => handleActive('ViewSavingsPage')}
-            icon={<LibraryBooks sx={{ fontSize: { xs: 20, md: 24 } }} />}
-            isActive={active === 'ViewSavingsPage'}
-            to="/dashboard/ViewSavingsPage"
-          />
-          <Tab
-            value="Add Savings"
-            onClick={() => handleActive('AddSavingsPage')}
-            icon={<Book sx={{ fontSize: { xs: 20, md: 24 } }} />}
-            isActive={active === 'AddSavingsPage'}
-            to="/dashboard/AddSavingsPage"
-          />
-          <Tab
-            value="Add Member"
-            onClick={() => handleActive('manage-members')}
-            icon={<People sx={{ fontSize: { xs: 20, md: 24 } }} />}
-            isActive={active === 'manage-members'}
-            to="/dashboard/manage-member"
-          />
-          <Tab
-            value="Start the Month"
-            onClick={() => handleActive('MonthlySavingsPage')}
-            icon={<Description sx={{ fontSize: { xs: 20, md: 24 } }} />}
-            isActive={active === 'MonthlySavingsPage'}
-            to="/dashboard/MonthlySavingsPage"
-          />
-        </Box>
-
-        {/* Logout Button */}
-        <Button
-          onClick={handleLogout}
-          startIcon={<Logout sx={{ fontSize: { xs: 20, md: 24 } }} />}
-          sx={{
             justifyContent: 'flex-start',
+            width: '100%',
+            px: 2,
+            py: 1.25,
+            borderRadius: tokens.radius.md,
             textTransform: 'none',
-            px: { xs: 2, sm: 2.5, md: 3 },
-            py: { xs: 1.25, md: 1.5 },
-            color: theme.palette.error.contrastText,
-            backgroundColor: theme.palette.error.main,
             fontWeight: 600,
-            borderRadius: 2,
-            fontSize: { xs: '0.875rem', md: '0.95rem' },
-            transition: 'all 0.3s ease',
-            minHeight: isMobile ? 44 : 'auto',
+            fontSize: '0.875rem',
+            fontFamily: tokens.font,
+            color: '#fff',
+            backgroundColor: tokens.color.danger,
+            minHeight: 44,
+            boxShadow: 'none',
+            transition: 'all 0.18s ease',
             '&:hover': {
-              backgroundColor: theme.palette.error.dark,
+              backgroundColor: tokens.color.dangerHover,
+              boxShadow: '0 4px 12px rgba(192,57,43,0.35)',
             },
           }}
         >
           Log Out
         </Button>
       </Box>
+    </Box>
+  );
+
+  return (
+    <Drawer
+      variant={isMobile ? 'temporary' : 'persistent'}
+      open={sideNavActive}
+      onClose={isMobile ? handleSideNavActive : undefined}
+      ModalProps={{ keepMounted: true }}
+      sx={{
+        width: sideNavActive ? drawerWidth : 0,
+        flexShrink: 0,
+        transition: 'width 0.3s ease',
+        '& .MuiDrawer-paper': {
+          width: drawerWidth,
+          boxSizing: 'border-box',
+          border: 'none',
+          background: tokens.color.bg,
+          overflowX: 'hidden',
+          // subtle right shadow to lift sidebar off page
+          boxShadow: '4px 0 24px rgba(0,0,0,0.18)',
+          transition: 'all 0.3s ease',
+        },
+        // remove default MUI backdrop tint on mobile — use our own
+        '& .MuiBackdrop-root': {
+          backgroundColor: 'rgba(27,43,36,0.6)',
+          backdropFilter: 'blur(2px)',
+        },
+      }}
+    >
+      {sidebarContent}
     </Drawer>
   );
 };

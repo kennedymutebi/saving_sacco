@@ -1,4 +1,22 @@
-// src/services/dashboardService.ts
+/**
+ * dashboardService.ts — Dashboard Data Service
+ *
+ * Fetches all data displayed on the admin dashboard:
+ * - Summary statistics (total savings, profit, members)
+ * - Savings & profit trends (last 7 months)
+ * - Weekly deposit activity
+ * - Recent transactions
+ * - Top savers leaderboard
+ *
+ * Uses apiRequest() from apiClient.ts which automatically
+ * handles token expiry by redirecting to /login on 401.
+ *
+ * Uses Promise.allSettled() so each section loads
+ * independently — if one endpoint times out, the rest
+ * of the dashboard still renders normally.
+ */
+
+import { apiRequest } from '../config/apiClient';
 import type {
   DashboardStats,
   SavingsTrend,
@@ -7,115 +25,75 @@ import type {
   TopSaver,
 } from '../types/dashboardtypes';
 
-const API_BASE_URL = 'http://84.247.171.71:8082';
-
 class DashboardService {
-  // Helper to get auth token
-  private getAuthToken(): string | null {
-    return localStorage.getItem('access_token');
-  }
 
-  // Helper to make authenticated requests
-  private async fetchWithAuth(endpoint: string): Promise<any> {
-    const token = this.getAuthToken();
-
-    if (!token) {
-      throw new Error('No authentication token found. Please login again.');
-    }
-
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-
-    // Check if response is HTML → means server error / wrong URL
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('text/html')) {
-      throw new Error(
-        `Invalid response from server (HTML received). Check endpoint: ${endpoint}`
-      );
-    }
-
+  /**
+   * Fetches summary stats for the hero card and stat cards.
+   * Endpoint: GET /api/dashboard/stats/
+   */
+  async getDashboardStats(): Promise<DashboardStats> {
+    const response = await apiRequest('/api/dashboard/stats/');
     const data = await response.json();
-
-    console.log(`Dashboard API ${endpoint}:`, response.status, data);
-
-    if (!response.ok) {
-      throw new Error(data.detail || data.message || data.error || 'API request failed');
-    }
-
+    if (!response.ok) throw new Error(data.detail || data.message || 'Failed to fetch stats');
     return data;
   }
 
-  // ✅ FIXED — Correct endpoint for dashboard stats
-  async getDashboardStats(): Promise<DashboardStats> {
-    try {
-      const data = await this.fetchWithAuth('/api/dashboard/stats/');
-      console.log('Dashboard stats fetched successfully');
-      return data;
-    } catch (error) {
-      console.error('Error fetching dashboard stats:', error);
-      throw error;
-    }
-  }
-
-  // Get savings and profit trends (last 7 months)
+  /**
+   * Fetches savings and profit trend data for the area chart.
+   * Endpoint: GET /api/dashboard/trends/
+   */
   async getSavingsTrends(): Promise<SavingsTrend[]> {
-    try {
-      const data = await this.fetchWithAuth('/api/dashboard/trends/');
-      console.log('Savings trends fetched successfully');
-      return data;
-    } catch (error) {
-      console.error('Error fetching savings trends:', error);
-      throw error;
-    }
+    const response = await apiRequest('/api/dashboard/trends/');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || data.message || 'Failed to fetch trends');
+    return data;
   }
 
-  // Get weekly deposit activity
+  /**
+   * Fetches weekly deposit totals for the bar chart.
+   * Endpoint: GET /api/dashboard/weekly-deposits/
+   */
   async getWeeklyDeposits(): Promise<WeeklyDeposit[]> {
-    try {
-      const data = await this.fetchWithAuth('/api/dashboard/weekly-deposits/');
-      console.log('Weekly deposits fetched successfully');
-      return data;
-    } catch (error) {
-      console.error('Error fetching weekly deposits:', error);
-      throw error;
-    }
+    const response = await apiRequest('/api/dashboard/weekly-deposits/');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || data.message || 'Failed to fetch weekly deposits');
+    return data;
   }
 
-  // Get recent transactions (last 10)
+  /**
+   * Fetches the 10 most recent savings transactions.
+   * Endpoint: GET /api/dashboard/transactions/recent/
+   */
   async getRecentTransactions(): Promise<RecentTransaction[]> {
-    try {
-      const data = await this.fetchWithAuth('/api/dashboard/transactions/recent/');
-      console.log('Recent transactions fetched successfully');
-      return data;
-    } catch (error) {
-      console.error('Error fetching recent transactions:', error);
-      throw error;
-    }
+    const response = await apiRequest('/api/dashboard/transactions/recent/');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || data.message || 'Failed to fetch transactions');
+    return data;
   }
 
-  // Get top 5 savers
+  /**
+   * Fetches the top 5 savers ranked by total savings.
+   * Endpoint: GET /api/dashboard/top-savers/
+   */
   async getTopSavers(): Promise<TopSaver[]> {
-    try {
-      const data = await this.fetchWithAuth('/api/dashboard/top-savers/');
-      console.log('Top savers fetched successfully');
-      return data;
-    } catch (error) {
-      console.error('Error fetching top savers:', error);
-      throw error;
-    }
+    const response = await apiRequest('/api/dashboard/top-savers/');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || data.message || 'Failed to fetch top savers');
+    return data;
   }
 
-  // Fetch all dashboard data at once
+  /**
+   * Fetches all dashboard sections in parallel.
+   *
+   * Uses Promise.allSettled() instead of Promise.all() so that
+   * each section fails independently. If the trends endpoint times
+   * out, stats, transactions and top savers still load normally.
+   *
+   * Each field falls back to null / empty array if its request fails.
+   */
   async getAllDashboardData() {
-    try {
-      console.log('Fetching all dashboard data...');
-
-      const [stats, trends, weeklyDeposits, transactions, topSavers] = await Promise.all([
+    const [stats, trends, weeklyDeposits, transactions, topSavers] =
+      await Promise.allSettled([
         this.getDashboardStats(),
         this.getSavingsTrends(),
         this.getWeeklyDeposits(),
@@ -123,26 +101,18 @@ class DashboardService {
         this.getTopSavers(),
       ]);
 
-      console.log('All dashboard data fetched successfully');
-
-      return {
-        stats,
-        trends,
-        weeklyDeposits,
-        transactions,
-        topSavers,
-      };
-    } catch (error) {
-      console.error('Error fetching all dashboard data:', error);
-      throw error;
+    // Stats is critical — if it fails we throw so the page shows the error state
+    if (stats.status === 'rejected') {
+      throw new Error(stats.reason?.message || 'Failed to load dashboard stats');
     }
-  }
 
-  // Check if user is authenticated (for dashboard access)
-  isAuthenticated(): boolean {
-    const token = this.getAuthToken();
-    console.log('Checking dashboard authentication, token:', token ? 'exists' : 'missing');
-    return !!token;
+    return {
+      stats:          stats.value,
+      trends:         trends.status          === 'fulfilled' ? trends.value         : [],
+      weeklyDeposits: weeklyDeposits.status  === 'fulfilled' ? weeklyDeposits.value : [],
+      transactions:   transactions.status    === 'fulfilled' ? transactions.value   : [],
+      topSavers:      topSavers.status       === 'fulfilled' ? topSavers.value      : [],
+    };
   }
 }
 

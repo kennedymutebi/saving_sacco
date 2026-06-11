@@ -1,7 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import LoginPage from './pages/Login';
-import ResetPassword from './pages/ResetPassword';
+
 import DashboardPage from './pages/DashboardPage';
 import SignupPage from './pages/SignupPage';
 import AddSavingsPage from './pages/AddSavingsPage';
@@ -11,6 +11,8 @@ import Layout from './components/Pagelayout';
 import ViewSavingsPage from './pages/ViewSavingsPage';
 import OtpVerificationPage from './pages/OtpVerificationPage';
 import ProtectedRoute from './components/ProtectedRoute';
+import ForgotPassword from './pages/ForgotPassword';
+
 
 function App() {
   return (
@@ -20,19 +22,13 @@ function App() {
           {/* Public routes */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           
           {/* OTP Verification Route */}
           <Route path="/verify-otp" element={<OtpVerificationPage />} />
 
           {/* Protected Change Password Route (outside Layout) */}
-          <Route 
-            path="/reset-password" 
-            element={
-              <ProtectedRoute>
-                <ResetPassword />
-              </ProtectedRoute>
-            } 
-          />
+          
 
           {/* Protected routes wrapped in Layout */}
           <Route 

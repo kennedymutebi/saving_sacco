@@ -1,4 +1,14 @@
-// src/context/AuthContext.tsx
+/**
+ * AuthContext.tsx — Global Authentication State
+ *
+ * Provides authentication state (isAuthenticated, user)
+ * and actions (login, logout) to every component in the app
+ * without prop drilling.
+ *
+ * Usage in any component:
+ *   const { isAuthenticated, user, logout } = useAuth();
+ */
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { authService } from '../services/authService';
@@ -15,69 +25,52 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return authService.isAuthenticated();
-  });
-  
-  const [user, setUserState] = useState<UserData | null>(() => {
-    return authService.getUserData();
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
+    () => authService.isAuthenticated()
+  );
 
-  // Sync authentication state with localStorage changes
+  const [user, setUserState] = useState<UserData | null>(
+    () => authService.getUserData()
+  );
+
+  // Re-check auth state on mount and on cross-tab storage changes.
+  // This handles cases like logging out in another browser tab.
   useEffect(() => {
-    const checkAuth = () => {
+    const syncAuthState = () => {
       const authenticated = authService.isAuthenticated();
-      const userData = authService.getUserData();
-      
-      console.log('AuthContext useEffect - checking auth:', {
-        authenticated,
-        hasUserData: !!userData,
-        currentIsAuthenticated: isAuthenticated,
-      });
-      
       setIsAuthenticated(authenticated);
-      
-      if (authenticated && userData) {
-        setUserState(userData);
-      } else if (!authenticated) {
-        setUserState(null);
-      }
+      setUserState(authenticated ? authService.getUserData() : null);
     };
 
-    // Check auth on mount and whenever storage changes
-    checkAuth();
-
-    // Listen for storage events (for cross-tab synchronization)
-    window.addEventListener('storage', checkAuth);
-
-    return () => {
-      window.removeEventListener('storage', checkAuth);
-    };
+    syncAuthState();
+    window.addEventListener('storage', syncAuthState);
+    return () => window.removeEventListener('storage', syncAuthState);
   }, []);
 
+  /**
+   * Call this after a successful OTP verification.
+   * Reads the newly stored token and user data from localStorage.
+   */
   const login = () => {
     const authenticated = authService.isAuthenticated();
-    const userData = authService.getUserData();
-    
-    console.log('AuthContext login called:', {
-      authenticated,
-      hasUserData: !!userData,
-      accessToken: localStorage.getItem('access_token'),
-    });
-    
     setIsAuthenticated(authenticated);
-    
-    if (authenticated && userData) {
-      setUserState(userData);
-    }
+    if (authenticated) setUserState(authService.getUserData());
   };
 
+  /**
+   * Clears tokens from localStorage and resets state.
+   * The user is redirected to /login by the consuming component.
+   */
   const logout = () => {
     authService.logout();
     setIsAuthenticated(false);
     setUserState(null);
   };
 
+  /**
+   * Manually update the user object in both state and localStorage.
+   * Useful after profile updates.
+   */
   const setUser = (userData: UserData | null) => {
     setUserState(userData);
     if (userData) {
@@ -94,6 +87,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 };
 
+/**
+ * useAuth — Custom hook to access auth context.
+ * Must be used inside a component wrapped by <AuthProvider>.
+ */
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
