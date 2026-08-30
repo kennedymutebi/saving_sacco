@@ -56,6 +56,7 @@ interface Member {
   total_savings: number;
   initials?: string;
   savings?: SavingsEntry[];
+  total_withdrawn?: number;  
 }
 
 interface MemberSavingsDetail {
@@ -68,6 +69,7 @@ interface MemberSavingsDetail {
   savings?: SavingsEntry[];
   total?: number;
   total_savings?: number;
+  
   [key: string]: any;
 }
 
@@ -113,7 +115,7 @@ export default function ViewSavingsPage() {
 
   useEffect(() => { fetchMembers(); }, []);
 
-  const fetchMembers = async () => {
+ const fetchMembers = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -121,7 +123,10 @@ export default function ViewSavingsPage() {
       let arr: Member[] = Array.isArray(data)
         ? data
         : (data as any)?.members || (data as any)?.results || (data as any)?.data || [];
-      arr = arr.map((m) => ({ ...m, total_savings: m.total_savings ?? 0 }));
+      arr = arr.map((m) => ({
+        ...m,
+        total_savings: (m.total_savings ?? 0) - (m.total_withdrawn ?? 0), // net balance
+      }));
       setMembers(arr);
       setFilteredMembers(arr);
     } catch (err: any) {

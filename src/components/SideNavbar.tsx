@@ -18,6 +18,9 @@ import {
   Description,
   Logout,
   Close,
+  RemoveCircleOutline,
+  Groups,
+  Assessment,
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 
@@ -49,8 +52,11 @@ const NAV_ITEMS = [
   { id: 'dashboard',          label: 'Dashboard',       icon: Dashboard,       to: '/dashboard' },
   { id: 'ViewSavingsPage',    label: 'View Savings',    icon: LibraryBooks,    to: '/dashboard/ViewSavingsPage' },
   { id: 'AddSavingsPage',     label: 'Add Savings',     icon: Book,            to: '/dashboard/AddSavingsPage' },
+  { id: 'WithdrawPage',       label: 'Withdraw',        icon: RemoveCircleOutline, to: '/dashboard/WithdrawPage' },
   { id: 'manage-members',     label: 'Add Member',      icon: People,          to: '/dashboard/manage-member' },
   { id: 'MonthlySavingsPage', label: 'Start the Month', icon: Description,     to: '/dashboard/MonthlySavingsPage' },
+  { id: 'CollectorsPage',     label: 'Collectors',      icon: Groups,          to: '/dashboard/CollectorsPage' },
+  { id: 'ReportsPage',        label: 'Reports',         icon: Assessment,      to: '/dashboard/ReportsPage' },
 ];
 
 // ─── Tab Component ─────────────────────────────────────────────────────────────
@@ -209,7 +215,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ sideNavActive, handleSideNavAct
           >
             <img
               src="/profit-rounded-lines-icon.jpg"
-              alt="HHSSA logo"
+              alt="MUTA logo"
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               onError={(e) => {
                 // fallback to initials if image fails
@@ -227,7 +233,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ sideNavActive, handleSideNavAct
                 lineHeight: 1.1,
               }}
             >
-              HHSSA
+              MUTA
             </Typography>
             <Typography sx={{ fontSize: '0.68rem', color: tokens.color.textMuted, mt: 0.1 }}>
               Savings Platform

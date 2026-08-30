@@ -132,7 +132,7 @@ export default function ForgotPassword() {
             >
               <img
                 src="/profit-rounded-lines-icon.jpg"
-                alt="Harvest Haven Logo"
+                alt="MUTA Logo"
                 style={{ width: '100%', height: '100%', borderRadius: '50%' }}
               />
             </Box>
@@ -147,7 +147,7 @@ export default function ForgotPassword() {
                 letterSpacing: '-0.5px',
               }}
             >
-              Harvest Haven
+              Twezimbe Development Group
             </Typography>
             <Typography sx={{ mb: 3, opacity: 0.85, fontSize: { md: '1rem', lg: '1.15rem' } }}>
               Saving Association
@@ -224,7 +224,7 @@ export default function ForgotPassword() {
                 <img src="/profit-rounded-lines-icon.jpg" alt="Logo" style={{ width: 56, height: 56, borderRadius: '50%' }} />
               </Box>
               <Typography sx={{ fontWeight: 700, color: tokens.color.primary, fontSize: '1.2rem', fontFamily: tokens.font.base }}>
-                Harvest Haven
+                Twezimbe Development Group
               </Typography>
               <Typography sx={{ color: tokens.color.textMuted, fontSize: '0.78rem', mt: 0.25 }}>
                 Saving Association

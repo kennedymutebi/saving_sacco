@@ -1,22 +1,34 @@
 // src/services/membersService.ts
 
+export interface Collector {
+  id: number;
+  name: string;
+  phone_number: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
 export interface Member {
   id: number;
   membership_id: string;
   full_name: string;
-  email: string;
-  phone_number: string;
-  place_of_residence: string;
+  email: string | null;
+  phone_number: string | null;
+  place_of_residence: string | null;
   date_joined: string;
   total_savings?: number;
+  current_balance?: number;
   is_active_member?: boolean;
+  collector_id: number | null;
+  collector_name: string | null;
 }
 
 export interface CreateMemberData {
   first_name: string;
   last_name: string;
-  phone_number: string;
-  place_of_residence: string;
+  phone_number?: string;
+  place_of_residence?: string;
+  collector: number; // required — id of the Collector this member belongs to
 }
 
 export interface UpdateMemberData {
@@ -45,7 +57,6 @@ class MembersService {
       throw new Error('No authentication token found. Please login again.');
     }
 
-    // Log request details for debugging
     if (options.method === 'POST' || options.method === 'PUT' || options.method === 'PATCH') {
       const bodyData = options.body ? JSON.parse(options.body as string) : null;
       console.log(`🚀 ${options.method} ${endpoint}`);
@@ -62,30 +73,26 @@ class MembersService {
     });
 
     const contentType = response.headers.get('content-type');
-    
-    // Handle 204 No Content
+
     if (response.status === 204) {
       return null;
     }
 
-    // Check if response is HTML (usually means server error)
     if (contentType && contentType.includes('text/html')) {
       const htmlText = await response.text();
       console.error('❌ HTML Response received:', htmlText.substring(0, 500));
       throw new Error(`Server error (${response.status}): Received HTML instead of JSON. Check endpoint: ${endpoint}`);
     }
 
-    // Parse JSON response
     const data = await response.json();
     console.log(`📥 Response ${endpoint}:`, response.status, data);
 
     if (!response.ok) {
       console.error('❌ API Error:', data);
-      
-      // Better error message extraction
-      const errorMessage = 
-        data.detail || 
-        data.message || 
+
+      const errorMessage =
+        data.detail ||
+        data.message ||
         data.error ||
         Object.entries(data)
           .map(([key, value]) => {
@@ -96,7 +103,7 @@ class MembersService {
           })
           .join(', ') ||
         'API request failed';
-      
+
       throw new Error(errorMessage);
     }
 
@@ -104,24 +111,21 @@ class MembersService {
   }
 
   /**
-   * Get all members with optional search
+   * Get all members with optional search and optional collector filter.
+   * Results are ordered NEWEST FIRST by the backend (-created_at).
    */
-  async getAllMembers(search?: string): Promise<Member[]> {
+  async getAllMembers(search?: string, collectorId?: number): Promise<Member[]> {
     try {
-      const endpoint = search 
-        ? `/api/members/?search=${encodeURIComponent(search)}`
-        : '/api/members/';
-      
-      const data = await this.fetchWithAuth(endpoint);
-      console.log('Members fetched successfully');
+      const params = new URLSearchParams();
+      if (search) params.set('search', search);
+      if (collectorId) params.set('collector', String(collectorId));
+      const qs = params.toString();
+      const endpoint = qs ? `/api/members/?${qs}` : '/api/members/';
 
-      // Handle different response formats
-      if (Array.isArray(data)) {
-        return data;
-      }
-      if (data.results && Array.isArray(data.results)) {
-        return data.results;
-      }
+      const data = await this.fetchWithAuth(endpoint);
+
+      if (Array.isArray(data)) return data;
+      if (data.results && Array.isArray(data.results)) return data.results;
       return [];
     } catch (error) {
       console.error('Error fetching members:', error);
@@ -129,14 +133,9 @@ class MembersService {
     }
   }
 
-  /**
-   * Get a single member by ID
-   */
   async getMember(id: number): Promise<Member> {
     try {
-      const data = await this.fetchWithAuth(`/api/members/${id}/`);
-      console.log('Member fetched successfully');
-      return data;
+      return await this.fetchWithAuth(`/api/members/${id}/`);
     } catch (error) {
       console.error(`Error fetching member ${id}:`, error);
       throw error;
@@ -144,17 +143,16 @@ class MembersService {
   }
 
   /**
-   * Create a new member
+   * Create a new member. `collector` is REQUIRED by the backend —
+   * use getCollectors() to populate the dropdown before calling this.
    */
   async createMember(memberData: CreateMemberData): Promise<Member> {
     try {
       console.log('Creating member with data:', memberData);
-      
       const data = await this.fetchWithAuth('/api/members/', {
         method: 'POST',
         body: JSON.stringify(memberData),
       });
-      
       console.log('Member created successfully:', data);
       return data;
     } catch (error) {
@@ -163,19 +161,12 @@ class MembersService {
     }
   }
 
-  /**
-   * Update a member (full update)
-   */
   async updateMember(id: number, memberData: UpdateMemberData): Promise<Member> {
     try {
-      console.log(`Updating member ${id} with data:`, memberData);
-      
       const data = await this.fetchWithAuth(`/api/members/${id}/`, {
         method: 'PUT',
         body: JSON.stringify(memberData),
       });
-      
-      console.log('Member updated successfully:', data);
       return data;
     } catch (error) {
       console.error(`Error updating member ${id}:`, error);
@@ -183,19 +174,12 @@ class MembersService {
     }
   }
 
-  /**
-   * Partial update a member (only specified fields)
-   */
   async partialUpdateMember(id: number, memberData: Partial<UpdateMemberData>): Promise<Member> {
     try {
-      console.log(`Partially updating member ${id} with data:`, memberData);
-      
       const data = await this.fetchWithAuth(`/api/members/${id}/`, {
         method: 'PATCH',
         body: JSON.stringify(memberData),
       });
-      
-      console.log('Member partially updated successfully:', data);
       return data;
     } catch (error) {
       console.error(`Error partially updating member ${id}:`, error);
@@ -203,45 +187,43 @@ class MembersService {
     }
   }
 
-  /**
-   * Delete a member
-   */
   async deleteMember(id: number): Promise<void> {
     try {
-      await this.fetchWithAuth(`/api/members/${id}/`, {
-        method: 'DELETE',
-      });
-      console.log(`Member ${id} deleted successfully`);
+      await this.fetchWithAuth(`/api/members/${id}/`, { method: 'DELETE' });
     } catch (error) {
       console.error(`Error deleting member ${id}:`, error);
       throw error;
     }
   }
 
-  /**
-   * Get member's savings transactions
-   */
-  async getMemberSavings(id: number, cycleId?: string): Promise<any[]> {
+  // ─── Collectors ───────────────────────────────────────────────────────────
+  // Collectors live under /api/auth/collectors/ (admin-managed, no login).
+  // Use these to populate the "Collector" dropdown when creating a member.
+
+  async getCollectors(activeOnly: boolean = true): Promise<Collector[]> {
     try {
-      const endpoint = cycleId
-        ? `/api/members/${id}/savings/?cycle=${cycleId}`
-        : `/api/members/${id}/savings/`;
-      
-      const data = await this.fetchWithAuth(endpoint);
-      console.log(`Member ${id} savings fetched successfully`);
-      return data;
+      const data = await this.fetchWithAuth(`/api/auth/collectors/?active_only=${activeOnly}`);
+      return Array.isArray(data) ? data : [];
     } catch (error) {
-      console.error(`Error fetching savings for member ${id}:`, error);
+      console.error('Error fetching collectors:', error);
       throw error;
     }
   }
 
-  /**
-   * Check if user is authenticated
-   */
+  async createCollector(name: string, phoneNumber?: string): Promise<Collector> {
+    try {
+      return await this.fetchWithAuth('/api/auth/collectors/', {
+        method: 'POST',
+        body: JSON.stringify({ name, phone_number: phoneNumber || null }),
+      });
+    } catch (error) {
+      console.error('Error creating collector:', error);
+      throw error;
+    }
+  }
+
   isAuthenticated(): boolean {
-    const token = this.getAuthToken();
-    return !!token;
+    return !!this.getAuthToken();
   }
 }
 

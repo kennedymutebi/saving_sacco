@@ -111,7 +111,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
           }}
         >
           <WelcomeText variant="h5" noWrap>
-           Havest Haven Sacco Saving Association
+             Twezimbe Development Group 
           </WelcomeText>
         </Box>
 
@@ -132,7 +132,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
               animation: `${fadeIn} 0.8s ease-out`,
             }}
           >
-            LMS
+            TDG
           </Typography>
         </Box>
 

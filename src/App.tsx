@@ -9,9 +9,12 @@ import ManageMembersPage from './pages/ManageMembersPage';
 import MonthlySavingsPage from './pages/MonthlySavingsPage';
 import Layout from './components/Pagelayout';
 import ViewSavingsPage from './pages/ViewSavingsPage';
-import OtpVerificationPage from './pages/OtpVerificationPage';
+
 import ProtectedRoute from './components/ProtectedRoute';
 import ForgotPassword from './pages/ForgotPassword';
+import WithdrawPage from './pages/WithdrawPage';
+import CollectorsPage from './pages/CollectorsPage';
+import ReportsPage from './pages/ReportsPage';
 
 
 function App() {
@@ -25,7 +28,7 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           
           {/* OTP Verification Route */}
-          <Route path="/verify-otp" element={<OtpVerificationPage />} />
+          
 
           {/* Protected Change Password Route (outside Layout) */}
           
@@ -44,6 +47,9 @@ function App() {
             <Route path="AddSavingsPage" element={<AddSavingsPage />} />
             <Route path="manage-member" element={<ManageMembersPage />} />
             <Route path="MonthlySavingsPage" element={<MonthlySavingsPage />} />
+            <Route path="/dashboard/WithdrawPage" element={<WithdrawPage />} />
+            <Route path="CollectorsPage" element={<CollectorsPage />} />
+            <Route path="/dashboard/ReportsPage" element={<ReportsPage />} />
           </Route>
 
           {/* Default route */}

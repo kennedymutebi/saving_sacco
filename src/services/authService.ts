@@ -2,44 +2,38 @@
  * authService.ts — Authentication Service
  *
  * Handles all authentication-related API calls:
- * - Login (triggers OTP flow)
- * - Signup
- * - OTP Verification (issues final tokens)
- * - Resend OTP
- * - Forgot Password
- * - Change Password
+ * - Login (issues tokens immediately — backend has NO OTP step)
+ * - Signup (creates an admin account pending approval)
+ * - Forgot / Change Password
  * - Logout
  *
- * Tokens are stored in localStorage and managed
- * centrally via apiClient.ts.
+ * ⚠️ IMPORTANT: The backend does NOT have /api/auth/verify-otp/ or
+ * /api/auth/resend-otp/ endpoints. Login returns final access/refresh
+ * tokens directly in the response body under `tokens.access` /
+ * `tokens.refresh`. Any page that navigates to a "/verify-otp" route
+ * after login needs to be updated to go straight to the dashboard.
+ *
+ * Tokens are stored in localStorage and managed centrally via apiClient.ts.
  */
-
 
 import { apiRequest } from '../config/apiClient';
 import type {
-  LoginRequest,
   SignupRequest,
-  VerifyOtpRequest,
   ChangePasswordRequest,
   AuthResponse,
 } from '../types/auth';
-
-interface ResendOtpRequest {
-  email: string;
-}
 
 class AuthService {
 
   /**
    * LOGIN
-   * Sends credentials to backend.
-   * Backend responds by sending an OTP to the user's email.
-   * Tokens are NOT issued yet — they come after OTP verification.
+   * Sends credentials to backend. Backend responds immediately with
+   * { user, message, tokens: { access, refresh } } — no OTP involved.
    */
   async login(email: string, password: string): Promise<AuthResponse> {
     const response = await apiRequest('/api/auth/login/', {
       method: 'POST',
-      body: JSON.stringify({ email, password, otp_type: email } as LoginRequest),
+      body: JSON.stringify({ email, password }),
     }, false); // false = no token required for login
 
     const data = await response.json();
@@ -60,53 +54,48 @@ class AuthService {
         throw new Error('Your account has been deactivated. Please contact support.');
       }
 
-      if (errorMessage.toLowerCase().includes('invalid credentials') ||
-          errorMessage.toLowerCase().includes('incorrect password')) {
+      if (errorMessage.toLowerCase().includes('invalid')) {
         throw new Error('Invalid email or password. Please check your credentials and try again.');
       }
 
       throw new Error(errorMessage);
     }
 
-    // Some backends return tokens at login before OTP — store temporarily
-    const tokensObj = data.tokens || data;
-    const accessToken = tokensObj.access || tokensObj.access_token || tokensObj.token;
-    const refreshToken = tokensObj.refresh || tokensObj.refresh_token;
+    // Tokens are nested under `tokens`, NOT top-level.
+    const accessToken = data.tokens?.access;
+    const refreshToken = data.tokens?.refresh;
 
-    if (accessToken) {
-      localStorage.setItem('temp_access_token', accessToken);
-      if (refreshToken) localStorage.setItem('temp_refresh_token', refreshToken);
+    if (!accessToken) {
+      throw new Error('Login succeeded but no access token was returned. Contact support.');
     }
 
-    // Save email for OTP verification step
-    localStorage.setItem('pending_email', email);
+    localStorage.setItem('access_token', accessToken);
+    if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
+    if (data.user) localStorage.setItem('user_data', JSON.stringify(data.user));
+    localStorage.setItem('user_email', email);
 
     return data;
   }
 
   /**
    * SIGNUP
-   * Creates a new saver account.
-   * After signup, user must verify OTP before accessing the system.
+   * Creates a new admin account. Account is pending approval until
+   * an existing admin approves it (via emailed link / approve-user endpoint).
+   * No OTP or tokens are issued at signup.
    */
   async signup(
     email: string,
     username: string,
     password: string,
-    password2: string,
     firstName: string,
-    lastName: string,
-    phoneNumber: string,
-    placeOfResidence: string
+    lastName: string
   ): Promise<AuthResponse> {
     const response = await apiRequest('/api/auth/signup/', {
       method: 'POST',
       body: JSON.stringify({
-        email, username, password, password2,
+        email, username, password,
         first_name: firstName,
         last_name: lastName,
-        phone_number: phoneNumber,
-        place_of_residence: placeOfResidence,
       } as SignupRequest),
     }, false);
 
@@ -122,89 +111,6 @@ class AuthService {
         'Signup failed';
 
       throw new Error(errorMessage);
-    }
-
-    localStorage.setItem('pending_email', email);
-    return data;
-  }
-
-  /**
-   * VERIFY OTP
-   * Completes the authentication flow.
-   * Backend returns the final access + refresh tokens here.
-   */
-  async verifyOtp(email: string, otp: string): Promise<AuthResponse> {
-    const response = await apiRequest('/api/auth/verify-otp/', {
-      method: 'POST',
-      body: JSON.stringify({ email, otp } as VerifyOtpRequest),
-    }, false);
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      const errorMessage =
-        data.detail || data.message || data.error ||
-        (data.otp && data.otp[0]) ||
-        (data.non_field_errors && data.non_field_errors[0]) ||
-        'OTP verification failed';
-
-      if (errorMessage.toLowerCase().includes('invalid') ||
-          errorMessage.toLowerCase().includes('incorrect')) {
-        throw new Error('Invalid OTP. Please check the code and try again.');
-      }
-
-      if (errorMessage.toLowerCase().includes('expired')) {
-        throw new Error('OTP has expired. Please request a new code.');
-      }
-
-      throw new Error(errorMessage);
-    }
-
-    // Extract tokens from response
-    const tokensObj = data.tokens || data;
-    const accessToken = tokensObj.access || tokensObj.access_token || tokensObj.token;
-    const refreshToken = tokensObj.refresh || tokensObj.refresh_token;
-
-    if (accessToken) {
-      localStorage.setItem('access_token', accessToken);
-    } else {
-      // Fallback: use tokens stored during login step
-      const tempToken = localStorage.getItem('temp_access_token');
-      if (tempToken) {
-        localStorage.setItem('access_token', tempToken);
-        localStorage.removeItem('temp_access_token');
-
-        const tempRefresh = localStorage.getItem('temp_refresh_token');
-        if (tempRefresh) {
-          localStorage.setItem('refresh_token', tempRefresh);
-          localStorage.removeItem('temp_refresh_token');
-        }
-      }
-    }
-
-    if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
-    if (data.user) localStorage.setItem('user_data', JSON.stringify(data.user));
-
-    localStorage.setItem('user_email', email);
-    localStorage.removeItem('pending_email');
-
-    return data;
-  }
-
-  /**
-   * RESEND OTP
-   * Triggers a new OTP to be sent to the user's email.
-   */
-  async resendOtp(email: string): Promise<AuthResponse> {
-    const response = await apiRequest('/api/auth/resend-otp/', {
-      method: 'POST',
-      body: JSON.stringify({ email } as ResendOtpRequest),
-    }, false);
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.detail || data.message || data.error || 'Failed to resend OTP');
     }
 
     return data;
@@ -229,7 +135,6 @@ class AuthService {
   /**
    * CHANGE PASSWORD
    * Requires a valid access token.
-   * If token is expired, apiClient automatically redirects to login.
    */
   async changePassword(
     oldPassword: string,
@@ -263,15 +168,13 @@ class AuthService {
   /**
    * LOGOUT
    * Clears all auth data from localStorage.
+   * (Optionally also call POST /api/auth/logout/ to blacklist the refresh token server-side.)
    */
   logout(): void {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user_email');
     localStorage.removeItem('user_data');
-    localStorage.removeItem('pending_email');
-    localStorage.removeItem('temp_access_token');
-    localStorage.removeItem('temp_refresh_token');
   }
 
   /** Returns true if an access token exists in localStorage */

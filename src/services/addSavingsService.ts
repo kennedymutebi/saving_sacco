@@ -7,6 +7,7 @@ export interface Member {
   name: string;
   membership_id: string;
   total_savings: number;
+  total_withdrawn?: number;
 }
 
 export interface SavingsEntry {
@@ -151,19 +152,21 @@ class AddSavingsService {
   }
 
   // Get active savings cycle
-  async getActiveCycle(): Promise<SavingsCycle | null> {
-    try {
-      const data = await this.fetchWithAuth('/api/savings/cycles/?status=active');
-      console.log('Active cycle fetched successfully');
-      
-      // Router returns paginated results
-      const results = data.results || data;
-      return Array.isArray(results) && results.length > 0 ? results[0] : null;
-    } catch (error) {
-      console.error('Error fetching active cycle:', error);
-      throw error;
+async getActiveCycle(): Promise<SavingsCycle | null> {
+  try {
+    const data = await this.fetchWithAuth('/api/cycles/active/');
+    return data;
+  } catch (error: any) {
+    // The backend returns 404 when there's genuinely no active cycle —
+    // that's a valid state, not an error, so don't throw for it.
+    if (error.message?.includes('404') || error.message?.includes('No active cycle')) {
+      console.log('No active cycle currently set');
+      return null;
     }
+    console.error('Error fetching active cycle:', error);
+    throw error;
   }
+}
 
   // Create a new savings entry
   async createSavingsEntry(savingsData: CreateSavingsData): Promise<SavingsEntry> {

@@ -10,7 +10,7 @@ import {
 import {
   Search, Add, Person, Save, TrendingUp, Delete, KeyboardArrowDown,
   KeyboardArrowUp, Message, CheckCircle, Cancel, NotificationsNone,
-  FilterList, CalendarToday, BarChart,
+  FilterList, CalendarToday, BarChart, Groups,
 } from '@mui/icons-material';
 import { addSavingsService } from '../services/addSavingsService';
 import { viewSavingsService } from '../services/viewSavingsService';
@@ -36,6 +36,7 @@ interface MemberDetailResponse {
   member?: Member;
   current_month_entries?: SavingsEntry[];
   current_month_total?: number;
+  total_this_month?: number; // ← actual field name sent by MemberSavingsDetailView
   month?: string;
   cycle_name?: string;
   entries?: SavingsEntry[];
@@ -45,17 +46,18 @@ interface MemberDetailResponse {
   [key: string]: unknown;
 }
 
+// collector_id / collector_name are optional here because addSavingsService's
+// Member type doesn't declare them — the backend may or may not include them
+// depending on which endpoint /api/savings/view-savings/members/ actually returns.
 interface MemberRow extends Member {
   expanded: boolean;
   savingsLoaded: boolean;
   savingsEntries: SavingsEntry[];
   savingsTotal: number;
+  collector_id?: number | null;
+  collector_name?: string | null;
+  balance?: number; // net figure, when the members endpoint sends it directly
 }
-
-
-
-
-
 
 // ─── Mini Bar Chart (deposit growth curve) ───────────────────────────────────
 const MOCK_BARS = [
@@ -100,6 +102,7 @@ export default function SavingsManagerPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [chartPeriod, setChartPeriod] = useState<'Daily' | 'Weekly'>('Daily');
   const [filterMember, setFilterMember] = useState('all');
+  const [filterCollector, setFilterCollector] = useState('all');
 
   // Per-member inline form
   const [activeFormMemberId, setActiveFormMemberId] = useState<number | null>(null);
@@ -117,7 +120,7 @@ export default function SavingsManagerPage() {
 
   useEffect(() => { loadInitialData(); }, []);
 
-  const loadInitialData = async () => {
+const loadInitialData = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -125,7 +128,19 @@ export default function SavingsManagerPage() {
         addSavingsService.getMembers(),
         addSavingsService.getActiveCycle(),
       ]);
-      setMembers(membersData.map((m) => ({ ...m, expanded: false, savingsLoaded: false, savingsEntries: [], savingsTotal: 0 })));
+      setMembers(membersData.map((m) => ({
+        ...m,
+        // Prefer the backend's own net "balance" field (sent by
+        // MembersListWithSavingsView) when it's present — it's the
+        // authoritative figure. Only fall back to manual subtraction
+        // if the endpoint being hit doesn't include it, in which case
+        // total_withdrawn must also be present or this silently nets to 0.
+        total_savings: (m as any).balance ?? ((m.total_savings ?? 0) - ((m as any).total_withdrawn ?? 0)),
+        expanded: false,
+        savingsLoaded: false,
+        savingsEntries: [],
+        savingsTotal: 0,
+      })));
       setActiveCycle(cycleData);
       if (!cycleData) setError('No active savings cycle found. Please create an active cycle first.');
     } catch (err: any) {
@@ -144,7 +159,9 @@ export default function SavingsManagerPage() {
     try {
       const detail = await viewSavingsService.getMemberSavingsDetail(memberId) as MemberDetailResponse;
       const entries: SavingsEntry[] = detail.current_month_entries ?? detail.entries ?? detail.savings ?? [];
-      const total = Number(detail.current_month_total ?? detail.total ?? detail.total_savings ?? 0);
+      // total_this_month is the real field name MemberSavingsDetailView sends.
+      // The other keys are kept as fallbacks only.
+      const total = Number(detail.total_this_month ?? detail.current_month_total ?? detail.total ?? detail.total_savings ?? 0);
       const lastAmounts = entries.slice(0, 4).map((e) => Number(e.amount));
       setRecentAmounts((prev) => ({ ...prev, [memberId]: [...new Set(lastAmounts)].filter(Boolean) }));
       setMembers((prev) => prev.map((m) => m.id !== memberId ? m : { ...m, savingsLoaded: true, savingsEntries: entries, savingsTotal: total }));
@@ -242,9 +259,21 @@ export default function SavingsManagerPage() {
   // Total savings this month across all loaded members
   const totalThisMonth = members.reduce((s, m) => s + (parseFloat(String(m.total_savings ?? 0)) || 0), 0);
 
+  // Distinct collectors present in the loaded member list, for the filter dropdown.
+  // Falls back to an empty list gracefully if the members endpoint doesn't
+  // include collector_id/collector_name (see note above MemberRow).
+  const collectorOptions = Array.from(
+    new Map(
+      members
+        .filter((m) => m.collector_id != null)
+        .map((m) => [m.collector_id as number, m.collector_name || `Collector #${m.collector_id}`])
+    ).entries()
+  );
+
   const filteredMembers = members.filter(
     (m) =>
       (filterMember === 'all' || String(m.id) === filterMember) &&
+      (filterCollector === 'all' || String(m.collector_id) === filterCollector) &&
       (m.name.toLowerCase().includes(search.toLowerCase()) ||
         m.membership_id.toLowerCase().includes(search.toLowerCase()))
   );
@@ -461,11 +490,36 @@ export default function SavingsManagerPage() {
               </Select>
             </FormControl>
 
+            {/* Collector filter — only shows if the members payload includes collector info */}
+            {collectorOptions.length > 0 && (
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <Select
+                  value={filterCollector}
+                  onChange={(e) => setFilterCollector(e.target.value)}
+                  displayEmpty
+                  startAdornment={<Groups sx={{ fontSize: 15, color: tokens.color.textMuted, mr: 0.5 }} />}
+                  sx={{
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    borderRadius: tokens.radius.md,
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.border },
+                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.primaryLight },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: tokens.color.primary },
+                  }}
+                >
+                  <MenuItem value="all" sx={{ fontSize: '0.8rem' }}>All Collectors</MenuItem>
+                  {collectorOptions.map(([id, name]) => (
+                    <MenuItem key={id} value={String(id)} sx={{ fontSize: '0.8rem' }}>{name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+
             {/* Clear */}
             <Button
               variant="outlined"
               size="small"
-              onClick={() => { setFilterMember('all'); setSearch(''); }}
+              onClick={() => { setFilterMember('all'); setFilterCollector('all'); setSearch(''); }}
               sx={{
                 textTransform: 'none', fontWeight: 600, fontSize: '0.78rem',
                 borderRadius: tokens.radius.md,
@@ -495,8 +549,6 @@ export default function SavingsManagerPage() {
             </Box>
           </Box>
         </Card>
-
-       
 
         {/* ── Search ──────────────────────────────────────────────────────────── */}
         <TextField
@@ -604,9 +656,18 @@ export default function SavingsManagerPage() {
                               <Typography sx={{ fontWeight: 600, fontSize: '0.85rem', color: tokens.color.textDark, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {member.name}
                               </Typography>
-                              <Typography sx={{ fontSize: '0.72rem', color: tokens.color.success, fontWeight: 700 }}>
-                                {formatCurrency(member.total_savings)}
-                              </Typography>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                <Typography sx={{ fontSize: '0.72rem', color: tokens.color.success, fontWeight: 700 }}>
+                                  {formatCurrency(member.total_savings)}
+                                </Typography>
+                                {member.collector_name && (
+                                  <Chip
+                                    label={member.collector_name}
+                                    size="small"
+                                    sx={{ height: 16, fontSize: '0.62rem', fontWeight: 600, bgcolor: tokens.color.surfaceAlt, color: tokens.color.textMuted, '& .MuiChip-label': { px: 0.75 } }}
+                                  />
+                                )}
+                              </Box>
                             </Box>
                           </Box>
                         </TableCell>

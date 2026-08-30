@@ -21,6 +21,7 @@ import {
   Lock as LockIcon,
   Phone as PhoneIcon,
   LocationOn as LocationIcon,
+  CheckCircleOutline,
 } from '@mui/icons-material';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { authService } from '../services/authService';
@@ -80,6 +81,10 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  // Signup creates a pending-approval account — no tokens are issued and
+  // there's no OTP step, so we show a status message in place of the form
+  // rather than redirecting anywhere.
+  const [submitted, setSubmitted] = useState(false);
 
   const navigate = useNavigate();
 
@@ -106,17 +111,18 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
+      // authService.signup only accepts 5 args: email, username, password,
+      // firstName, lastName. password2 is client-side-only validation
+      // (checked above). phoneNumber / placeOfResidence are collected in
+      // the UI but the backend signup endpoint doesn't accept them yet.
       await authService.signup(
         formData.email,
         formData.username || formData.email,
         formData.password,
-        formData.password2,
         formData.firstName,
-        formData.lastName,
-        formData.phoneNumber,
-        formData.placeOfResidence
+        formData.lastName
       );
-      navigate('/verify-otp', { state: { email: formData.email } });
+      setSubmitted(true);
     } catch (err: any) {
       setError(err.message || 'Signup failed. Please try again.');
     } finally {
@@ -201,7 +207,7 @@ export default function SignupPage() {
             >
               <img
                 src="/profit-rounded-lines-icon.jpg"
-                alt="Harvest Haven Logo"
+                alt="MUTA Logo"
                 style={{ width: '100%', height: '100%', borderRadius: '50%' }}
               />
             </Box>
@@ -216,7 +222,7 @@ export default function SignupPage() {
                 letterSpacing: '-0.5px',
               }}
             >
-              Harvest Haven
+              Twezimbe Development Group
             </Typography>
             <Typography sx={{ mb: 3, opacity: 0.85, fontSize: { md: '1rem', lg: '1.1rem' } }}>
               Saving Association
@@ -253,7 +259,7 @@ export default function SignupPage() {
           </Box>
         </Box>
 
-        {/* ── Right — Form ─────────────────────────────────────────────── */}
+        {/* ── Right — Form / Pending-approval status ──────────────────── */}
         <Box
           sx={{
             flex: 1,
@@ -294,281 +300,339 @@ export default function SignupPage() {
                 <img src="/profit-rounded-lines-icon.jpg" alt="Logo" style={{ width: 56, height: 56, borderRadius: '50%' }} />
               </Box>
               <Typography sx={{ fontWeight: 700, color: tokens.color.primary, fontSize: '1.2rem', fontFamily: tokens.font.base }}>
-                Harvest Haven
+                Twezimbe Development Group
               </Typography>
               <Typography sx={{ color: tokens.color.textMuted, fontSize: '0.78rem', mt: 0.25 }}>
                 Saving Association
               </Typography>
             </Box>
 
-            {/* Heading */}
-            <Typography
-              sx={{
-                fontWeight: 800,
-                mb: 0.75,
-                color: tokens.color.textDark,
-                fontSize: { xs: '1.5rem', sm: '1.75rem' },
-                fontFamily: tokens.font.base,
-                lineHeight: 1.2,
-              }}
-            >
-              Become a Member
-            </Typography>
-            <Typography sx={{ mb: 3, color: tokens.color.textMid, fontSize: '0.88rem', lineHeight: 1.6 }}>
-              Create your account to start saving and investing with us
-            </Typography>
-
-            {/* Error */}
-            {error && (
-              <Alert
-                severity="error"
-                sx={{
-                  mb: 2.5,
-                  borderRadius: tokens.radius.md,
-                  background: '#FDECEA',
-                  border: `1px solid ${tokens.color.danger}22`,
-                  color: tokens.color.danger,
-                  fontSize: '0.82rem',
-                  '& .MuiAlert-icon': { color: tokens.color.danger },
-                }}
-                onClose={() => setError(null)}
-              >
-                {error}
-              </Alert>
-            )}
-
-            <Box component="form" onSubmit={handleSubmit}>
-
-              {/* First / Last name row */}
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2.5 }}>
-                <Box sx={{ flex: '1 1 0', minWidth: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
-                  <FieldLabel>First Name</FieldLabel>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    placeholder="First name"
-                    value={formData.firstName}
-                    onChange={handleChange('firstName')}
-                    disabled={loading}
-                    required
-                    sx={fieldSx}
-                  />
+            {submitted ? (
+              /* ── Pending approval status ─────────────────────────────── */
+              <Box sx={{ textAlign: 'center', py: { xs: 2, sm: 3 } }}>
+                <Box
+                  sx={{
+                    width: 72,
+                    height: 72,
+                    borderRadius: '50%',
+                    bgcolor: tokens.color.primaryPale,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    mx: 'auto',
+                    mb: 2.5,
+                  }}
+                >
+                  <CheckCircleOutline sx={{ fontSize: 40, color: tokens.color.primary }} />
                 </Box>
-                <Box sx={{ flex: '1 1 0', minWidth: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
-                  <FieldLabel>Last Name</FieldLabel>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    placeholder="Last name"
-                    value={formData.lastName}
-                    onChange={handleChange('lastName')}
-                    disabled={loading}
-                    required
-                    sx={fieldSx}
-                  />
-                </Box>
+                <Typography
+                  sx={{
+                    fontWeight: 800,
+                    fontSize: { xs: '1.35rem', sm: '1.5rem' },
+                    color: tokens.color.textDark,
+                    mb: 1,
+                    fontFamily: tokens.font.base,
+                  }}
+                >
+                  Account created
+                </Typography>
+                <Typography sx={{ color: tokens.color.textMid, fontSize: '0.9rem', lineHeight: 1.7, mb: 3 }}>
+                  Thanks, {formData.firstName || 'there'}. Your account is now <b>pending approval</b>.
+                  An administrator needs to review and approve it before you can sign in — this
+                  usually doesn't take long. We'll let you know at{' '}
+                  <b>{formData.email}</b> once it's ready.
+                </Typography>
+                <Button
+                  component={RouterLink}
+                  to="/"
+                  fullWidth
+                  variant="contained"
+                  sx={{
+                    py: 1.5,
+                    borderRadius: tokens.radius.md,
+                    textTransform: 'none',
+                    fontSize: '0.92rem',
+                    fontWeight: 700,
+                    bgcolor: tokens.color.primary,
+                    boxShadow: tokens.shadow.stat,
+                    '&:hover': { bgcolor: tokens.color.secondary },
+                  }}
+                >
+                  Back to Sign In
+                </Button>
               </Box>
+            ) : (
+              <>
+                {/* Heading */}
+                <Typography
+                  sx={{
+                    fontWeight: 800,
+                    mb: 0.75,
+                    color: tokens.color.textDark,
+                    fontSize: { xs: '1.5rem', sm: '1.75rem' },
+                    fontFamily: tokens.font.base,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  Become a Member
+                </Typography>
+                <Typography sx={{ mb: 3, color: tokens.color.textMid, fontSize: '0.88rem', lineHeight: 1.6 }}>
+                  Create your account to start saving and investing with us
+                </Typography>
 
-              {/* Email */}
-              <FieldLabel>Email Address</FieldLabel>
-              <TextField
-                fullWidth
-                size="small"
-                placeholder="your.email@example.com"
-                type="email"
-                value={formData.email}
-                onChange={handleChange('email')}
-                disabled={loading}
-                required
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <EmailIcon sx={{ color: tokens.color.textMuted, fontSize: 18 }} />
-                    </InputAdornment>
-                  ),
-                }}
-                sx={{ mb: 2.5, ...fieldSx }}
-              />
+                {/* Error */}
+                {error && (
+                  <Alert
+                    severity="error"
+                    sx={{
+                      mb: 2.5,
+                      borderRadius: tokens.radius.md,
+                      background: '#FDECEA',
+                      border: `1px solid ${tokens.color.danger}22`,
+                      color: tokens.color.danger,
+                      fontSize: '0.82rem',
+                      '& .MuiAlert-icon': { color: tokens.color.danger },
+                    }}
+                    onClose={() => setError(null)}
+                  >
+                    {error}
+                  </Alert>
+                )}
 
-              {/* Phone */}
-              <FieldLabel>Phone Number</FieldLabel>
-              <TextField
-                fullWidth
-                size="small"
-                placeholder="+256752682559"
-                value={formData.phoneNumber}
-                onChange={handleChange('phoneNumber')}
-                disabled={loading}
-                required
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <PhoneIcon sx={{ color: tokens.color.textMuted, fontSize: 18 }} />
-                    </InputAdornment>
-                  ),
-                }}
-                sx={{ mb: 2.5, ...fieldSx }}
-              />
+                <Box component="form" onSubmit={handleSubmit}>
 
-              {/* Place of Residence */}
-              <FieldLabel>Place of Residence</FieldLabel>
-              <TextField
-                fullWidth
-                size="small"
-                placeholder="Kampala"
-                value={formData.placeOfResidence}
-                onChange={handleChange('placeOfResidence')}
-                disabled={loading}
-                required
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <LocationIcon sx={{ color: tokens.color.textMuted, fontSize: 18 }} />
-                    </InputAdornment>
-                  ),
-                }}
-                sx={{ mb: 2.5, ...fieldSx }}
-              />
+                  {/* First / Last name row */}
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2.5 }}>
+                    <Box sx={{ flex: '1 1 0', minWidth: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
+                      <FieldLabel>First Name</FieldLabel>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        placeholder="First name"
+                        value={formData.firstName}
+                        onChange={handleChange('firstName')}
+                        disabled={loading}
+                        required
+                        sx={fieldSx}
+                      />
+                    </Box>
+                    <Box sx={{ flex: '1 1 0', minWidth: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
+                      <FieldLabel>Last Name</FieldLabel>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        placeholder="Last name"
+                        value={formData.lastName}
+                        onChange={handleChange('lastName')}
+                        disabled={loading}
+                        required
+                        sx={fieldSx}
+                      />
+                    </Box>
+                  </Box>
 
-              {/* Password */}
-              <FieldLabel>Password</FieldLabel>
-              <TextField
-                fullWidth
-                size="small"
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Create a strong password"
-                value={formData.password}
-                onChange={handleChange('password')}
-                disabled={loading}
-                required
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <LockIcon sx={{ color: tokens.color.textMuted, fontSize: 18 }} />
-                    </InputAdornment>
-                  ),
-                  ...eyeProps(showPassword, () => setShowPassword(!showPassword)),
-                }}
-                sx={{ mb: 2.5, ...fieldSx }}
-              />
-
-              {/* Confirm Password */}
-              <FieldLabel>Confirm Password</FieldLabel>
-              <TextField
-                fullWidth
-                size="small"
-                type={showConfirm ? 'text' : 'password'}
-                placeholder="Re-enter your password"
-                value={formData.password2}
-                onChange={handleChange('password2')}
-                disabled={loading}
-                required
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <LockIcon sx={{ color: tokens.color.textMuted, fontSize: 18 }} />
-                    </InputAdornment>
-                  ),
-                  ...eyeProps(showConfirm, () => setShowConfirm(!showConfirm)),
-                }}
-                sx={{ mb: 2, ...fieldSx }}
-              />
-
-              {/* Terms */}
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={terms}
-                    onChange={(e) => setTerms(e.target.checked)}
+                  {/* Email */}
+                  <FieldLabel>Email Address</FieldLabel>
+                  <TextField
+                    fullWidth
                     size="small"
+                    placeholder="your.email@example.com"
+                    type="email"
+                    value={formData.email}
+                    onChange={handleChange('email')}
+                    disabled={loading}
+                    required
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <EmailIcon sx={{ color: tokens.color.textMuted, fontSize: 18 }} />
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{ mb: 2.5, ...fieldSx }}
+                  />
+
+                  {/* Phone */}
+                  <FieldLabel>Phone Number</FieldLabel>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    placeholder="+256752682559"
+                    value={formData.phoneNumber}
+                    onChange={handleChange('phoneNumber')}
+                    disabled={loading}
+                    required
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <PhoneIcon sx={{ color: tokens.color.textMuted, fontSize: 18 }} />
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{ mb: 2.5, ...fieldSx }}
+                  />
+
+                  {/* Place of Residence */}
+                  <FieldLabel>Place of Residence</FieldLabel>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    placeholder="Kampala"
+                    value={formData.placeOfResidence}
+                    onChange={handleChange('placeOfResidence')}
+                    disabled={loading}
+                    required
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <LocationIcon sx={{ color: tokens.color.textMuted, fontSize: 18 }} />
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{ mb: 2.5, ...fieldSx }}
+                  />
+
+                  {/* Password */}
+                  <FieldLabel>Password</FieldLabel>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Create a strong password"
+                    value={formData.password}
+                    onChange={handleChange('password')}
+                    disabled={loading}
+                    required
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <LockIcon sx={{ color: tokens.color.textMuted, fontSize: 18 }} />
+                        </InputAdornment>
+                      ),
+                      ...eyeProps(showPassword, () => setShowPassword(!showPassword)),
+                    }}
+                    sx={{ mb: 2.5, ...fieldSx }}
+                  />
+
+                  {/* Confirm Password */}
+                  <FieldLabel>Confirm Password</FieldLabel>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type={showConfirm ? 'text' : 'password'}
+                    placeholder="Re-enter your password"
+                    value={formData.password2}
+                    onChange={handleChange('password2')}
+                    disabled={loading}
+                    required
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <LockIcon sx={{ color: tokens.color.textMuted, fontSize: 18 }} />
+                        </InputAdornment>
+                      ),
+                      ...eyeProps(showConfirm, () => setShowConfirm(!showConfirm)),
+                    }}
+                    sx={{ mb: 2, ...fieldSx }}
+                  />
+
+                  {/* Terms */}
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={terms}
+                        onChange={(e) => setTerms(e.target.checked)}
+                        size="small"
+                        disabled={loading}
+                        sx={{
+                          color: tokens.color.border,
+                          '&.Mui-checked': { color: tokens.color.primary },
+                          p: 0.5,
+                        }}
+                      />
+                    }
+                    label={
+                      <Typography sx={{ color: tokens.color.textMid, fontSize: '0.82rem' }}>
+                        I agree to the{' '}
+                        <Link
+                          href="#"
+                          sx={{
+                            color: tokens.color.primary,
+                            fontWeight: 600,
+                            textDecoration: 'none',
+                            '&:hover': { textDecoration: 'underline' },
+                          }}
+                        >
+                          Terms of Service
+                        </Link>
+                        {' '}and{' '}
+                        <Link
+                          href="#"
+                          sx={{
+                            color: tokens.color.primary,
+                            fontWeight: 600,
+                            textDecoration: 'none',
+                            '&:hover': { textDecoration: 'underline' },
+                          }}
+                        >
+                          Privacy Policy
+                        </Link>
+                      </Typography>
+                    }
+                    sx={{ mb: 3 }}
+                  />
+
+                  {/* Submit */}
+                  <Button
+                    fullWidth
+                    type="submit"
+                    variant="contained"
                     disabled={loading}
                     sx={{
-                      color: tokens.color.border,
-                      '&.Mui-checked': { color: tokens.color.primary },
-                      p: 0.5,
-                    }}
-                  />
-                }
-                label={
-                  <Typography sx={{ color: tokens.color.textMid, fontSize: '0.82rem' }}>
-                    I agree to the{' '}
-                    <Link
-                      href="#"
-                      sx={{
-                        color: tokens.color.primary,
-                        fontWeight: 600,
-                        textDecoration: 'none',
-                        '&:hover': { textDecoration: 'underline' },
-                      }}
-                    >
-                      Terms of Service
-                    </Link>
-                    {' '}and{' '}
-                    <Link
-                      href="#"
-                      sx={{
-                        color: tokens.color.primary,
-                        fontWeight: 600,
-                        textDecoration: 'none',
-                        '&:hover': { textDecoration: 'underline' },
-                      }}
-                    >
-                      Privacy Policy
-                    </Link>
-                  </Typography>
-                }
-                sx={{ mb: 3 }}
-              />
-
-              {/* Submit */}
-              <Button
-                fullWidth
-                type="submit"
-                variant="contained"
-                disabled={loading}
-                sx={{
-                  mb: 3,
-                  py: 1.6,
-                  borderRadius: tokens.radius.md,
-                  textTransform: 'none',
-                  fontSize: '0.95rem',
-                  fontWeight: 700,
-                  bgcolor: tokens.color.primary,
-                  boxShadow: tokens.shadow.stat,
-                  fontFamily: tokens.font.base,
-                  letterSpacing: 0.2,
-                  '&:hover': {
-                    bgcolor: tokens.color.secondary,
-                    boxShadow: tokens.shadow.elevated,
-                    transform: 'translateY(-1px)',
-                  },
-                  '&:active': { transform: 'translateY(0)' },
-                  '&:disabled': { bgcolor: tokens.color.border, boxShadow: 'none' },
-                  transition: 'all 0.2s',
-                }}
-              >
-                {loading ? <CircularProgress size={22} color="inherit" /> : 'Create Account'}
-              </Button>
-
-              {/* Footer */}
-              <Box sx={{ textAlign: 'center', pt: 2.5, borderTop: `1px solid ${tokens.color.border}` }}>
-                <Typography sx={{ color: tokens.color.textMid, fontSize: '0.85rem' }}>
-                  Already have an account?{' '}
-                  <Link
-                    component={RouterLink}
-                    to="/"
-                    underline="none"
-                    sx={{
-                      color: tokens.color.primary,
+                      mb: 3,
+                      py: 1.6,
+                      borderRadius: tokens.radius.md,
+                      textTransform: 'none',
+                      fontSize: '0.95rem',
                       fontWeight: 700,
-                      '&:hover': { color: tokens.color.secondary, textDecoration: 'underline' },
+                      bgcolor: tokens.color.primary,
+                      boxShadow: tokens.shadow.stat,
+                      fontFamily: tokens.font.base,
+                      letterSpacing: 0.2,
+                      '&:hover': {
+                        bgcolor: tokens.color.secondary,
+                        boxShadow: tokens.shadow.elevated,
+                        transform: 'translateY(-1px)',
+                      },
+                      '&:active': { transform: 'translateY(0)' },
+                      '&:disabled': { bgcolor: tokens.color.border, boxShadow: 'none' },
+                      transition: 'all 0.2s',
                     }}
                   >
-                    Sign in here
-                  </Link>
-                </Typography>
-              </Box>
-            </Box>
+                    {loading ? <CircularProgress size={22} color="inherit" /> : 'Create Account'}
+                  </Button>
+
+                  {/* Footer */}
+                  <Box sx={{ textAlign: 'center', pt: 2.5, borderTop: `1px solid ${tokens.color.border}` }}>
+                    <Typography sx={{ color: tokens.color.textMid, fontSize: '0.85rem' }}>
+                      Already have an account?{' '}
+                      <Link
+                        component={RouterLink}
+                        to="/"
+                        underline="none"
+                        sx={{
+                          color: tokens.color.primary,
+                          fontWeight: 700,
+                          '&:hover': { color: tokens.color.secondary, textDecoration: 'underline' },
+                        }}
+                      >
+                        Sign in here
+                      </Link>
+                    </Typography>
+                  </Box>
+                </Box>
+              </>
+            )}
           </Box>
         </Box>
       </Paper>

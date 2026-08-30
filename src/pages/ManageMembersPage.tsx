@@ -5,14 +5,15 @@ import {
   Box, Card, Typography, TextField, InputAdornment, Button, Chip,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Modal, Avatar, Container, CircularProgress, Alert, Snackbar,
-  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions
+  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
+  Select, MenuItem, FormControl, InputLabel, FormHelperText
 } from '@mui/material';
 import {
   Search, Add, Person, Close, Save, Edit, Delete, Phone, Home,
-  Refresh, Warning
+  Refresh, Warning, Groups
 } from '@mui/icons-material';
 import { membersService } from '../services/membersService';
-import type { Member, CreateMemberData, UpdateMemberData } from '../services/membersService';
+import type { Member, Collector, CreateMemberData, UpdateMemberData } from '../services/membersService';
 import { tokens, avatarColor } from '../config/theme';
 
 interface FormData {
@@ -20,12 +21,8 @@ interface FormData {
   last_name: string;
   phone_number: string;
   place_of_residence: string;
+  collector: string; // stored as string for the Select, converted to number on submit
 }
-
-// ─── Shared Design Tokens (matching SavingsDashboard) ────────────────────────
-
-// ─── Avatar palette cycling ───────────────────────────────────────────────────
-
 
 // ─── Validation utilities ─────────────────────────────────────────────────────
 const normalizePhoneNumber = (phone: string): string => {
@@ -55,6 +52,7 @@ const inputSx = {
 
 export default function AddMemberPage() {
   const [members, setMembers] = useState<Member[]>([]);
+  const [collectors, setCollectors] = useState<Collector[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -67,14 +65,25 @@ export default function AddMemberPage() {
     member: null,
   });
 
+  // Quick-add collector dialog
+  const [showCollectorDialog, setShowCollectorDialog] = useState(false);
+  const [newCollectorName, setNewCollectorName] = useState('');
+  const [newCollectorPhone, setNewCollectorPhone] = useState('');
+  const [collectorSubmitting, setCollectorSubmitting] = useState(false);
+  const [collectorError, setCollectorError] = useState<string | null>(null);
+
   const [formData, setFormData] = useState<FormData>({
     first_name: '',
     last_name: '',
     phone_number: '',
     place_of_residence: '',
+    collector: '',
   });
 
-  useEffect(() => { fetchMembers(); }, []);
+  useEffect(() => {
+    fetchMembers();
+    fetchCollectors();
+  }, []);
 
   const fetchMembers = async (query?: string) => {
     try {
@@ -85,6 +94,15 @@ export default function AddMemberPage() {
       showSnackbar(err.message || 'Failed to load members', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCollectors = async () => {
+    try {
+      const data = await membersService.getCollectors();
+      setCollectors(data);
+    } catch (err: any) {
+      showSnackbar(err.message || 'Failed to load collectors', 'error');
     }
   };
 
@@ -107,10 +125,11 @@ export default function AddMemberPage() {
         last_name: names.slice(1).join(' ') || '',
         phone_number: member.phone_number || '',
         place_of_residence: member.place_of_residence || '',
+        collector: member.collector_id ? String(member.collector_id) : '',
       });
     } else {
       setEditingMember(null);
-      setFormData({ first_name: '', last_name: '', phone_number: '', place_of_residence: '' });
+      setFormData({ first_name: '', last_name: '', phone_number: '', place_of_residence: '', collector: '' });
     }
     setShowForm(true);
   };
@@ -131,6 +150,9 @@ export default function AddMemberPage() {
       errors.phone_number = 'Invalid phone number. Use format: 0752682559 or +256752682559';
     }
     if (!formData.place_of_residence.trim()) errors.place_of_residence = 'Place of residence is required';
+    // Collector is required by the backend when CREATING a member.
+    // Not required when editing, since PATCH/PUT here doesn't touch collector.
+    if (!editingMember && !formData.collector) errors.collector = 'Please select a collector';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -139,17 +161,24 @@ export default function AddMemberPage() {
     if (!validateForm()) { showSnackbar('Please fix the errors in the form', 'error'); return; }
     try {
       setSubmitting(true);
-      const payload = {
-        first_name: formData.first_name.trim(),
-        last_name: formData.last_name.trim(),
-        phone_number: normalizePhoneNumber(formData.phone_number),
-        place_of_residence: formData.place_of_residence.trim(),
-      };
       if (editingMember) {
-        await membersService.updateMember(editingMember.id, payload as UpdateMemberData);
+        const payload: UpdateMemberData = {
+          first_name: formData.first_name.trim(),
+          last_name: formData.last_name.trim(),
+          phone_number: normalizePhoneNumber(formData.phone_number),
+          place_of_residence: formData.place_of_residence.trim(),
+        };
+        await membersService.updateMember(editingMember.id, payload);
         showSnackbar('Member updated successfully', 'success');
       } else {
-        await membersService.createMember(payload as CreateMemberData);
+        const payload: CreateMemberData = {
+          first_name: formData.first_name.trim(),
+          last_name: formData.last_name.trim(),
+          phone_number: normalizePhoneNumber(formData.phone_number),
+          place_of_residence: formData.place_of_residence.trim(),
+          collector: Number(formData.collector),
+        };
+        await membersService.createMember(payload);
         showSnackbar('Member added successfully', 'success');
       }
       handleCloseForm();
@@ -163,6 +192,9 @@ export default function AddMemberPage() {
       } else if (errStr.includes('phone')) {
         msg = 'Invalid phone number format';
         setFormErrors({ phone_number: msg });
+      } else if (errStr.includes('collector')) {
+        msg = 'Please select a valid collector';
+        setFormErrors({ collector: msg });
       } else if (errStr.includes('network') || errStr.includes('fetch')) {
         msg = 'Network error. Please check your internet connection.';
       } else if (err.message) {
@@ -200,6 +232,38 @@ export default function AddMemberPage() {
     try {
       return new Date(date).toLocaleDateString('en-UG', { month: 'short', day: 'numeric', year: 'numeric' });
     } catch { return 'N/A'; }
+  };
+
+  // ─── Quick-add collector (from inside the member form) ───────────────────
+  const handleOpenCollectorDialog = () => {
+    setNewCollectorName('');
+    setNewCollectorPhone('');
+    setCollectorError(null);
+    setShowCollectorDialog(true);
+  };
+
+  const handleSaveCollector = async () => {
+    if (!newCollectorName.trim()) {
+      setCollectorError('Collector name is required');
+      return;
+    }
+    try {
+      setCollectorSubmitting(true);
+      setCollectorError(null);
+      const created = await membersService.createCollector(
+        newCollectorName.trim(),
+        newCollectorPhone.trim() ? normalizePhoneNumber(newCollectorPhone) : undefined
+      );
+      await fetchCollectors();
+      // Auto-select the newly created collector in the member form
+      setFormData((prev) => ({ ...prev, collector: String(created.id) }));
+      setShowCollectorDialog(false);
+      showSnackbar(`Collector "${created.name}" added`, 'success');
+    } catch (err: any) {
+      setCollectorError(err.message || 'Failed to create collector');
+    } finally {
+      setCollectorSubmitting(false);
+    }
   };
 
   // ── Loading ────────────────────────────────────────────────────────────────
@@ -248,7 +312,7 @@ export default function AddMemberPage() {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={() => fetchMembers()}
+            onClick={() => { fetchMembers(); fetchCollectors(); }}
             sx={{
               borderColor: tokens.color.border,
               color: tokens.color.textMid,
@@ -304,7 +368,7 @@ export default function AddMemberPage() {
             {members.length}
           </Typography>
           <Typography sx={{ fontSize: '1rem', fontWeight: 500, opacity: 0.85, mt: 0.5 }}>
-            registered in the system
+            registered in the system · {collectors.length} collector{collectors.length === 1 ? '' : 's'}
           </Typography>
         </Card>
 
@@ -359,7 +423,7 @@ export default function AddMemberPage() {
             <Table>
               <TableHead>
                 <TableRow sx={{ background: tokens.color.surfaceAlt }}>
-                  {['Member', 'Membership ID', 'Phone Number', 'Place of Residence', 'Date Joined', 'Actions'].map((h) => (
+                  {['Member', 'Membership ID', 'Phone Number', 'Collector', 'Place of Residence', 'Date Joined', 'Actions'].map((h) => (
                     <TableCell
                       key={h}
                       align={h === 'Actions' ? 'center' : 'left'}
@@ -382,7 +446,7 @@ export default function AddMemberPage() {
               <TableBody>
                 {members.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
+                    <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
                       <Typography sx={{ color: tokens.color.textMuted, fontSize: '1rem' }}>No members found</Typography>
                     </TableCell>
                   </TableRow>
@@ -416,11 +480,26 @@ export default function AddMemberPage() {
                       </TableCell>
 
                       <TableCell sx={{ py: 1.5, fontFamily: 'monospace', fontSize: '0.95rem', color: tokens.color.textMid }}>
-                        {member.phone_number}
+                        {member.phone_number || '—'}
+                      </TableCell>
+
+                      <TableCell sx={{ py: 1.5 }}>
+                        {member.collector_name ? (
+                          <Chip
+                            icon={<Groups sx={{ fontSize: '1rem !important' }} />}
+                            label={member.collector_name}
+                            size="small"
+                            sx={{ bgcolor: tokens.color.surfaceAlt, color: tokens.color.textMid, fontWeight: 600, fontSize: '0.8rem' }}
+                          />
+                        ) : (
+                          <Typography sx={{ fontSize: '0.85rem', color: tokens.color.textMuted, fontStyle: 'italic' }}>
+                            Unassigned
+                          </Typography>
+                        )}
                       </TableCell>
 
                       <TableCell sx={{ py: 1.5, fontSize: '0.95rem', color: tokens.color.textMid }}>
-                        {member.place_of_residence}
+                        {member.place_of_residence || '—'}
                       </TableCell>
 
                       <TableCell sx={{ py: 1.5, fontSize: '0.95rem', color: tokens.color.textMuted }}>
@@ -545,6 +624,55 @@ export default function AddMemberPage() {
               InputProps={{ startAdornment: <InputAdornment position="start"><Home sx={{ color: tokens.color.textMuted }} /></InputAdornment> }}
               sx={inputSx}
             />
+
+            {/* Collector dropdown — required on create */}
+            {!editingMember && (
+              <Box>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <FormControl fullWidth required error={!!formErrors.collector} sx={inputSx}>
+                    <InputLabel>Collector</InputLabel>
+                    <Select
+                      label="Collector"
+                      value={formData.collector}
+                      onChange={(e) => setFormData({ ...formData, collector: e.target.value })}
+                      startAdornment={
+                        <InputAdornment position="start">
+                          <Groups sx={{ color: tokens.color.textMuted, fontSize: '1.1rem' }} />
+                        </InputAdornment>
+                      }
+                    >
+                      {collectors.length === 0 ? (
+                        <MenuItem value="" disabled>No collectors yet — add one</MenuItem>
+                      ) : (
+                        collectors.map((c) => (
+                          <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>
+                        ))
+                      )}
+                    </Select>
+                    {formErrors.collector && <FormHelperText>{formErrors.collector}</FormHelperText>}
+                  </FormControl>
+                  <Button
+                    onClick={handleOpenCollectorDialog}
+                    variant="outlined"
+                    sx={{
+                      whiteSpace: 'nowrap',
+                      borderColor: tokens.color.border,
+                      color: tokens.color.primary,
+                      fontWeight: 600,
+                      borderRadius: tokens.radius.md,
+                      textTransform: 'none',
+                      px: 2,
+                      '&:hover': { borderColor: tokens.color.primaryLight, bgcolor: tokens.color.primaryPale },
+                    }}
+                  >
+                    + New
+                  </Button>
+                </Box>
+                <Typography sx={{ fontSize: '0.75rem', color: tokens.color.textMuted, mt: 0.5, ml: 0.5 }}>
+                  Which collector brings in this member's savings.
+                </Typography>
+              </Box>
+            )}
           </Box>
 
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1.5, mt: 4 }}>
@@ -584,6 +712,67 @@ export default function AddMemberPage() {
           </Box>
         </Box>
       </Modal>
+
+      {/* ── Quick-Add Collector Dialog ──────────────────────────────────────── */}
+      <Dialog
+        open={showCollectorDialog}
+        onClose={() => !collectorSubmitting && setShowCollectorDialog(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: tokens.radius.xxl } }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1.1rem', color: tokens.color.textDark }}>
+          Add New Collector
+        </DialogTitle>
+        <DialogContent>
+          {collectorError && (
+            <Alert severity="error" sx={{ mb: 2, borderRadius: tokens.radius.md, fontSize: '0.85rem' }}>
+              {collectorError}
+            </Alert>
+          )}
+          <TextField
+            label="Collector Name"
+            value={newCollectorName}
+            onChange={(e) => setNewCollectorName(e.target.value)}
+            fullWidth
+            required
+            autoFocus
+            sx={{ mb: 2.5, mt: 1, ...inputSx }}
+          />
+          <TextField
+            label="Phone Number (optional)"
+            value={newCollectorPhone}
+            onChange={(e) => setNewCollectorPhone(e.target.value)}
+            fullWidth
+            placeholder="0752682559"
+            sx={inputSx}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+          <Button
+            onClick={() => setShowCollectorDialog(false)}
+            disabled={collectorSubmitting}
+            sx={{ textTransform: 'none', fontWeight: 600, color: tokens.color.textMid, borderRadius: tokens.radius.md }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSaveCollector}
+            variant="contained"
+            disabled={collectorSubmitting}
+            sx={{
+              bgcolor: tokens.color.primary,
+              '&:hover': { bgcolor: tokens.color.secondary },
+              textTransform: 'none',
+              fontWeight: 700,
+              borderRadius: tokens.radius.md,
+              boxShadow: 'none',
+            }}
+          >
+            {collectorSubmitting ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : 'Add Collector'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ── Snackbar ─────────────────────────────────────────────────────────── */}
       <Snackbar

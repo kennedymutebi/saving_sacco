@@ -35,7 +35,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
 
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, login } = useAuth();
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
@@ -46,13 +46,23 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
+      // Backend issues access/refresh tokens directly here — no OTP step.
       await authService.login(email, password);
+
+      // Sync AuthContext's isAuthenticated/user state with the tokens
+      // that authService.login() just saved to localStorage. Without
+      // this call, ProtectedRoute still sees isAuthenticated: false
+      // and immediately redirects back to /login.
+      login();
+
       if (remember) {
         localStorage.setItem('remember_me', 'true');
       } else {
         localStorage.removeItem('remember_me');
       }
-      navigate('/verify-otp', { state: { email } });
+      // ⚠️ Previously navigated to '/verify-otp', which no longer exists
+      // in the flow. Login is complete at this point — go to dashboard.
+      navigate('/dashboard', { replace: true });
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
@@ -160,7 +170,7 @@ export default function LoginPage() {
                 letterSpacing: '-0.5px',
               }}
             >
-              Harvest Haven
+              Twezimbe Development Group
             </Typography>
             <Typography
               sx={{
@@ -251,7 +261,7 @@ export default function LoginPage() {
                 <img src="/profit-rounded-lines-icon.jpg" alt="Logo" style={{ width: 56, height: 56, borderRadius: '50%' }} />
               </Box>
               <Typography sx={{ fontWeight: 700, color: tokens.color.primary, fontSize: '1.2rem', fontFamily: tokens.font.base }}>
-                Harvest Haven
+               Twezimbe Development Group
               </Typography>
               <Typography sx={{ color: tokens.color.textMuted, fontSize: '0.78rem', mt: 0.25 }}>
                 Saving Association
@@ -431,7 +441,7 @@ export default function LoginPage() {
               {/* Footer */}
               <Box sx={{ textAlign: 'center', pt: 2.5, borderTop: `1px solid ${tokens.color.border}` }}>
                 <Typography sx={{ color: tokens.color.textMid, fontSize: '0.85rem' }}>
-                  New to Harvest Haven?{' '}
+                  New to TDG?{' '}
                   <Link
                     component={RouterLink}
                     to="/signup"

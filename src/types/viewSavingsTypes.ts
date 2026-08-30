@@ -13,6 +13,7 @@ export interface Member {
   membership_id: string;
   total_savings: number;
   savings?: SavingsEntry[];
+  total_withdrawn?: number;
 }
 
 export interface MemberSavingsDetail {

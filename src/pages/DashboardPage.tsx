@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { dashboardService } from '../services/dashboardService';
+import { collectorSummaryService } from '../services/collectorSummaryService';
 import type {
   DashboardStats, SavingsTrend,
   WeeklyDeposit, RecentTransaction, TopSaver,
 } from '../types/dashboardtypes';
+import type { CollectorSummary, SummaryPeriod } from '../services/collectorSummaryService';
 import { tokens, avatarColor } from '../config/theme';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -28,15 +30,9 @@ import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import { NotificationsNone, TrendingUp, TrendingDown, Refresh } from '@mui/icons-material';
 
-// ─── Shared Design Tokens (same as ViewSavingsPage) ──────────────────────────
-
-// ─── Avatar palette cycling ───────────────────────────────────────────────────
-
-
 const getInitials = (name: string) =>
   name.split(' ').slice(0, 2).map((n) => n.charAt(0).toUpperCase()).join('');
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-UG', {
     style: 'currency',
@@ -51,7 +47,6 @@ const formatDate = (dateString: string) =>
     year: 'numeric',
   });
 
-// ─── Custom Tooltip for charts ────────────────────────────────────────────────
 const ChartTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
@@ -77,7 +72,6 @@ const ChartTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-// ─── Stat Card ────────────────────────────────────────────────────────────────
 interface StatCardProps {
   label: string;
   value: string;
@@ -99,7 +93,6 @@ const StatCard = ({ label, value, sub, positive = true, gradient }: StatCardProp
       overflow: 'hidden',
     }}
   >
-    {/* decorative blob */}
     <Box
       sx={{
         position: 'absolute',
@@ -160,7 +153,6 @@ const StatCard = ({ label, value, sub, positive = true, gradient }: StatCardProp
   </Card>
 );
 
-// ─── Section Paper ────────────────────────────────────────────────────────────
 const SectionPaper = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <Paper
     sx={{
@@ -193,7 +185,6 @@ const SectionPaper = ({ title, children }: { title: string; children: React.Reac
   </Paper>
 );
 
-// ─── Main Component ───────────────────────────────────────────────────────────
 const SavingsDashboard = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [savingsTrendData, setSavingsTrendData] = useState<SavingsTrend[]>([]);
@@ -203,13 +194,21 @@ const SavingsDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // REPLACE with this ✅
-// REPLACE with this ✅
-useEffect(() => {
-  fetchAllData();
-}, []);
+  // ── Corrected "this month" net figure, sourced from the collector-summary
+  // endpoint (which already does total_saved - total_withdrawn correctly),
+  // since /api/dashboard/stats/ does not subtract withdrawals. ─────────────
+  const [monthlyNetBalance, setMonthlyNetBalance] = useState<number | null>(null);
+  const [monthlyNetLoading, setMonthlyNetLoading] = useState(false);
 
-  const fetchAllData = async () => {
+  const [collectorPeriod, setCollectorPeriod] = useState<'today' | 'month' | 'all_time'>('today');
+  const [collectorSummaries, setCollectorSummaries] = useState<CollectorSummary[]>([]);
+  const [collectorOverall, setCollectorOverall] = useState({
+    total_saved: 0, total_withdrawn: 0, net_balance: 0, members_count: 0, entries_count: 0,
+  });
+  const [collectorLoading, setCollectorLoading] = useState(false);
+  const [collectorError, setCollectorError] = useState<string | null>(null);
+
+  const fetchAllData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -224,9 +223,74 @@ useEffect(() => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // ── Loading ─────────────────────────────────────────────────────────────────
+  const fetchMonthlyNetBalance = useCallback(async () => {
+    try {
+      setMonthlyNetLoading(true);
+      const period: SummaryPeriod = { type: 'month', month: new Date().toISOString().slice(0, 7) };
+      const { overall } = await collectorSummaryService.getAllCollectorsSummary(period);
+      setMonthlyNetBalance(overall.net_balance);
+    } catch (err) {
+      console.error('Failed to fetch corrected monthly net balance', err);
+      setMonthlyNetBalance(null); // fall back to (incorrect) stats.total_savings below
+    } finally {
+      setMonthlyNetLoading(false);
+    }
+  }, []);
+
+  const fetchCollectorSummaries = useCallback(async (periodType: 'today' | 'month' | 'all_time') => {
+    try {
+      setCollectorLoading(true);
+      setCollectorError(null);
+      const period: SummaryPeriod =
+        periodType === 'today'
+          ? { type: 'today' }
+          : periodType === 'month'
+          ? { type: 'month', month: new Date().toISOString().slice(0, 7) }
+          : { type: 'all_time' };
+      const { collectors, overall } = await collectorSummaryService.getAllCollectorsSummary(period);
+      setCollectorSummaries(collectors);
+      setCollectorOverall(overall);
+    } catch (err) {
+      setCollectorError(err instanceof Error ? err.message : 'Failed to fetch collector summaries');
+    } finally {
+      setCollectorLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAllData();
+    fetchMonthlyNetBalance();
+  }, [fetchAllData, fetchMonthlyNetBalance]);
+
+  useEffect(() => {
+    fetchCollectorSummaries(collectorPeriod);
+  }, [collectorPeriod, fetchCollectorSummaries]);
+
+  // Refetch everything on withdrawal/deposit elsewhere, or when tab regains focus
+  useEffect(() => {
+    const refreshAll = () => {
+      fetchAllData();
+      fetchMonthlyNetBalance();
+      fetchCollectorSummaries(collectorPeriod);
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshAll();
+    };
+
+    window.addEventListener('savings-updated', refreshAll);
+    window.addEventListener('focus', refreshAll);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.removeEventListener('savings-updated', refreshAll);
+      window.removeEventListener('focus', refreshAll);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [collectorPeriod, fetchAllData, fetchMonthlyNetBalance, fetchCollectorSummaries]);
+
   if (loading) {
     return (
       <Box
@@ -247,7 +311,6 @@ useEffect(() => {
     );
   }
 
-  // ── Error ───────────────────────────────────────────────────────────────────
   if (error) {
     return (
       <Box sx={{ p: { xs: 2, sm: 4 }, maxWidth: 640, mx: 'auto', background: tokens.color.bg, minHeight: '100vh' }}>
@@ -279,7 +342,6 @@ useEffect(() => {
     );
   }
 
-  // ── No data ─────────────────────────────────────────────────────────────────
   if (!stats) {
     return (
       <Box sx={{ p: { xs: 2, sm: 4 }, background: tokens.color.bg, minHeight: '100vh' }}>
@@ -290,7 +352,13 @@ useEffect(() => {
     );
   }
 
-  // ── Main ────────────────────────────────────────────────────────────────────
+  // Use the corrected net balance when we have it; otherwise fall back to
+  // the (potentially gross) backend figure so the page never breaks.
+  const displayedTotalSavings = monthlyNetBalance !== null ? monthlyNetBalance : stats.total_savings;
+  const displayedTotalProfit = monthlyNetBalance !== null
+    ? Math.round(monthlyNetBalance * (stats.profit_margin / 100) * 100) / 100
+    : stats.total_profit;
+
   return (
     <Box
       sx={{
@@ -302,7 +370,6 @@ useEffect(() => {
         boxSizing: 'border-box',
       }}
     >
-      {/* ── Top App Bar ──────────────────────────────────────────────────── */}
       <Box
         sx={{
           background: tokens.color.surface,
@@ -337,7 +404,7 @@ useEffect(() => {
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Button
-            onClick={fetchAllData}
+            onClick={() => { fetchAllData(); fetchMonthlyNetBalance(); fetchCollectorSummaries(collectorPeriod); }}
             startIcon={<Refresh sx={{ fontSize: '0.9rem' }} />}
             size="small"
             sx={{
@@ -357,7 +424,6 @@ useEffect(() => {
         </Box>
       </Box>
 
-      {/* ── Page content ─────────────────────────────────────────────────── */}
       <Box
         sx={{
           px: { xs: 2, sm: 3, md: 4 },
@@ -367,8 +433,6 @@ useEffect(() => {
           overflowX: 'hidden',
         }}
       >
-
-        {/* ── Hero summary card ─────────────────────────────────────────── */}
         <Card
           sx={{
             borderRadius: tokens.radius.xl,
@@ -393,7 +457,7 @@ useEffect(() => {
             Savings This Month
           </Typography>
           <Typography sx={{ fontWeight: 800, fontSize: { xs: '2rem', sm: '2.6rem' }, lineHeight: 1.05, mb: 0.5 }}>
-            {formatCurrency(stats.total_savings)}
+            {monthlyNetLoading ? <CircularProgress size={28} sx={{ color: '#fff' }} /> : formatCurrency(displayedTotalSavings)}
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
             {stats.growth_percentage >= 0
@@ -405,7 +469,6 @@ useEffect(() => {
           </Box>
         </Card>
 
-        {/* ── Stat cards row ────────────────────────────────────────────── */}
         <Box
           sx={{
             display: 'grid',
@@ -416,14 +479,14 @@ useEffect(() => {
         >
           <StatCard
             label="Total Savings"
-            value={formatCurrency(stats.total_savings)}
+            value={formatCurrency(displayedTotalSavings)}
             sub={`${Math.abs(stats.growth_percentage)}% growth`}
             positive={stats.growth_percentage >= 0}
             gradient={[tokens.color.primary, tokens.color.accent]}
           />
           <StatCard
             label="Total Profit"
-            value={formatCurrency(stats.total_profit)}
+            value={formatCurrency(displayedTotalProfit)}
             sub={`${stats.profit_margin}% profit margin`}
             positive
           />
@@ -435,7 +498,6 @@ useEffect(() => {
           />
         </Box>
 
-        {/* ── Charts row ────────────────────────────────────────────────── */}
         <Box
           sx={{
             display: 'grid',
@@ -444,7 +506,6 @@ useEffect(() => {
             mb: 3,
           }}
         >
-          {/* Savings & Profit Trend */}
           <SectionPaper title="Savings & Profit Trend">
             {savingsTrendData.length > 0 ? (
               <ResponsiveContainer width="100%" height={280}>
@@ -503,7 +564,6 @@ useEffect(() => {
             )}
           </SectionPaper>
 
-          {/* Weekly Deposits */}
           <SectionPaper title="Weekly Deposit Activity">
             {weeklyDeposits.length > 0 ? (
               <ResponsiveContainer width="100%" height={280}>
@@ -541,7 +601,6 @@ useEffect(() => {
           </SectionPaper>
         </Box>
 
-        {/* ── Tables row ────────────────────────────────────────────────── */}
         <Box
           sx={{
             display: 'grid',
@@ -550,7 +609,6 @@ useEffect(() => {
             mb: 3,
           }}
         >
-          {/* Recent Transactions */}
           <SectionPaper title="Recent Transactions">
             {recentTransactions.length > 0 ? (
               <TableContainer sx={{ overflowX: 'hidden', width: '100%' }}>
@@ -677,7 +735,6 @@ useEffect(() => {
             )}
           </SectionPaper>
 
-          {/* Top Savers */}
           <SectionPaper title="Top Savers">
             {topSavers.length > 0 ? (
               <Box>
@@ -695,7 +752,6 @@ useEffect(() => {
                         transition: 'background 0.15s',
                       }}
                     >
-                      {/* Left: rank badge + name */}
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
                         <Box
                           sx={{
@@ -740,7 +796,6 @@ useEffect(() => {
                         </Box>
                       </Box>
 
-                      {/* Right: savings amount */}
                       <Typography
                         sx={{
                           fontWeight: 700,
@@ -766,6 +821,154 @@ useEffect(() => {
             )}
           </SectionPaper>
         </Box>
+
+        <SectionPaper title="Collector Performance">
+          <Box sx={{ display: 'flex', gap: 1, mb: 2.5, flexWrap: 'wrap' }}>
+            {([
+              { key: 'today', label: 'Today' },
+              { key: 'month', label: 'This Month' },
+              { key: 'all_time', label: 'All-Time' },
+            ] as const).map((opt) => (
+              <Button
+                key={opt.key}
+                onClick={() => setCollectorPeriod(opt.key)}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.8rem',
+                  borderRadius: tokens.radius.md,
+                  px: 2,
+                  bgcolor: collectorPeriod === opt.key ? tokens.color.primary : tokens.color.surfaceAlt,
+                  color: collectorPeriod === opt.key ? '#fff' : tokens.color.textMid,
+                  '&:hover': {
+                    bgcolor: collectorPeriod === opt.key ? tokens.color.secondary : tokens.color.primaryPale,
+                  },
+                }}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </Box>
+
+          {collectorError && (
+            <Alert severity="error" sx={{ mb: 2, borderRadius: tokens.radius.md, fontSize: '0.85rem' }}>
+              {collectorError}
+            </Alert>
+          )}
+
+          {collectorLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
+              <CircularProgress size={32} sx={{ color: tokens.color.primary }} />
+            </Box>
+          ) : (
+            <>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' },
+                  gap: 1.5,
+                  mb: 3,
+                }}
+              >
+                {[
+                  { label: 'Total Collected', value: formatCurrency(collectorOverall.total_saved), color: tokens.color.success },
+                  { label: 'Total Withdrawn', value: formatCurrency(collectorOverall.total_withdrawn), color: tokens.color.danger },
+                  { label: 'Net Balance', value: formatCurrency(collectorOverall.net_balance), color: tokens.color.primary },
+                  { label: 'Members', value: String(collectorOverall.members_count), color: tokens.color.textDark },
+                ].map((stat) => (
+                  <Box
+                    key={stat.label}
+                    sx={{
+                      p: 1.75,
+                      borderRadius: tokens.radius.md,
+                      bgcolor: tokens.color.surfaceAlt,
+                      border: `1px solid ${tokens.color.border}`,
+                    }}
+                  >
+                    <Typography sx={{ fontSize: '0.68rem', color: tokens.color.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, mb: 0.5 }}>
+                      {stat.label}
+                    </Typography>
+                    <Typography sx={{ fontWeight: 800, fontSize: '1.1rem', color: stat.color, wordBreak: 'break-word' }}>
+                      {stat.value}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+
+              {collectorSummaries.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 5 }}>
+                  <Typography sx={{ color: tokens.color.textMuted }}>No collectors found</Typography>
+                </Box>
+              ) : (
+                <TableContainer sx={{ overflowX: 'auto', width: '100%' }}>
+                  <Table sx={{ minWidth: 560 }} size="small">
+                    <TableHead>
+                      <TableRow sx={{ background: tokens.color.surfaceAlt }}>
+                        {['Collector', 'Collected', 'Withdrawn', 'Net', 'Members', 'Entries'].map((h) => (
+                          <TableCell
+                            key={h}
+                            align={h === 'Collector' ? 'left' : 'right'}
+                            sx={{
+                              fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase',
+                              letterSpacing: 0.5, color: tokens.color.textMuted,
+                              borderBottom: `2px solid ${tokens.color.border}`, py: 1.25,
+                            }}
+                          >
+                            {h}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {collectorSummaries.map((c, idx) => (
+                        <TableRow
+                          key={c.collector.id}
+                          sx={{
+                            background: idx % 2 === 0 ? tokens.color.surface : tokens.color.surfaceAlt,
+                            '&:hover': { background: tokens.color.primaryPale },
+                          }}
+                        >
+                          <TableCell sx={{ py: 1.25 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                              <Avatar sx={{ bgcolor: avatarColor(idx), width: 28, height: 28, fontSize: '0.7rem', fontWeight: 700 }}>
+                                {getInitials(c.collector.name)}
+                              </Avatar>
+                              <Typography sx={{ fontSize: '0.82rem', fontWeight: 600, color: tokens.color.textDark, whiteSpace: 'nowrap' }}>
+                                {c.collector.name}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell align="right" sx={{ py: 1.25 }}>
+                            <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: tokens.color.success, whiteSpace: 'nowrap' }}>
+                              {formatCurrency(c.total_saved)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right" sx={{ py: 1.25 }}>
+                            <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: tokens.color.danger, whiteSpace: 'nowrap' }}>
+                              {formatCurrency(c.total_withdrawn)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right" sx={{ py: 1.25 }}>
+                            <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: tokens.color.primary, whiteSpace: 'nowrap' }}>
+                              {formatCurrency(c.net_balance)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right" sx={{ py: 1.25, fontSize: '0.8rem', color: tokens.color.textMid }}>
+                            {c.members_count}
+                          </TableCell>
+                          <TableCell align="right" sx={{ py: 1.25, fontSize: '0.8rem', color: tokens.color.textMid }}>
+                            {c.entries_count}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </>
+          )}
+        </SectionPaper>
 
       </Box>
     </Box>
