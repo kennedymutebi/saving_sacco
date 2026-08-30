@@ -48,8 +48,11 @@ jobs:
           port: ${{ secrets.SERVER_PORT }}
           script: |
             set -e
-            cd ~/harvest-haven
-            sed -i "s|image: kennedymutebi/harvest-haven-frontend:.*|image: kennedymutebi/harvest-haven-frontend:${{ github.sha }}|" docker-compose.yml
-            docker compose pull frontend
-            docker compose up -d frontend
+            docker pull kennedymutebi/harvest-haven-frontend:${{ github.sha }}
+            docker stop harvest_haven_frontend || true
+            docker rm harvest_haven_frontend || true
+            docker run -d --name harvest_haven_frontend \
+              -p 3005:80 \
+              --restart unless-stopped \
+              kennedymutebi/harvest-haven-frontend:${{ github.sha }}
             docker image prune -f
