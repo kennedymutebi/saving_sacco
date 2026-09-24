@@ -38,15 +38,19 @@ export interface CreateSavingsData {
   comment?: string;
   send_sms?: boolean;
 }
-export interface CorrectSavingsData {
-  correct_amount: number;
-  reason: string;
-}
 
 export interface UpdateSavingsData {
   amount?: number;
   date?: string;
   comment?: string;
+  // NOTE: SavingsEntryViewSet.update() on the backend re-validates with
+  // CreateSavingsEntrySerializer WITHOUT partial=True, so a PATCH that omits
+  // required fields (e.g. member/cycle, if required on that serializer) can
+  // 400. Sending these two along with the changed fields is a no-op if they
+  // weren't required, and keeps edits working if they were — without
+  // touching the backend.
+  member?: number;
+  cycle?: number;
 }
 
 export interface SavingsCycle {
@@ -189,6 +193,10 @@ class AddSavingsService {
   }
 
   // FIXED: same doubled-prefix bug — was '/api/savings/savings/{id}/'.
+  // Backend's SavingsEntryViewSet.update() re-validates with
+  // CreateSavingsEntrySerializer WITHOUT partial=True (see UpdateSavingsData
+  // note above), so callers should include member/cycle alongside the
+  // changed fields to avoid a 400 on required-field validation.
   async updateSavingsEntry(savingsId: number, savingsData: UpdateSavingsData): Promise<SavingsEntry> {
     try {
       const data = await this.fetchWithAuth(
@@ -204,7 +212,9 @@ class AddSavingsService {
     }
   }
 
-  // FIXED: same doubled-prefix bug.
+  // FIXED: same doubled-prefix bug. Backend guards against deleting an
+  // entry a withdrawal has already drawn from — that comes back as a 400
+  // with an `error` message, which fetchWithAuth surfaces via err.message.
   async deleteSavingsEntry(savingsId: number): Promise<void> {
     try {
       await this.fetchWithAuth(
@@ -214,21 +224,6 @@ class AddSavingsService {
       console.log('Savings entry deleted successfully');
     } catch (error) {
       console.error('Error deleting savings entry:', error);
-      throw error;
-    }
-  }
-
-  // FIXED: same doubled-prefix bug.
-  async correctSavingsEntry(savingsId: number, data: CorrectSavingsData): Promise<SavingsEntry> {
-    try {
-      const result = await this.fetchWithAuth(
-        `/api/savings/${savingsId}/correct/`,
-        'POST',
-        data
-      );
-      return result;
-    } catch (error) {
-      console.error('Error correcting savings entry:', error);
       throw error;
     }
   }

@@ -7,7 +7,7 @@ import {
   DialogActions, Switch, Autocomplete, Select, MenuItem, FormControl,
 } from '@mui/material';
 import {
-  Search, Add, Save, TrendingUp, Edit, KeyboardArrowDown,
+  Search, Add, Save, TrendingUp, Edit, Delete as DeleteIcon, KeyboardArrowDown,
   KeyboardArrowUp, Message, CheckCircle, Cancel, NotificationsNone,
   CalendarToday, Groups,
 } from '@mui/icons-material';
@@ -30,7 +30,8 @@ interface SavingsEntry {
   comment: string;
   created_at?: string;
   updated_at?: string;
-  /** Set by the backend for correction entries (spec Section 4 / 6). */
+  /** Set by the backend for legacy correction entries, if any. Nothing in
+   * this page creates these anymore (see the removed correction flow). */
   is_adjustment?: boolean;
 }
 
@@ -126,12 +127,18 @@ export default function SavingsManagerPage() {
   const [duplicateWarning, setDuplicateWarning] = useState<{ [id: number]: boolean }>({});
   const [sendMessage, setSendMessage] = useState(false);
 
-  // One-click correction (replaces delete)
-  const [correctTarget, setCorrectTarget] = useState<{ entry: SavingsEntry; memberId: number } | null>(null);
-  const [correctAmount, setCorrectAmount] = useState('');
-  const [correctReason, setCorrectReason] = useState('');
-  const [correcting, setCorrecting] = useState(false);
-  const [correctError, setCorrectError] = useState<string | null>(null);
+  // Edit an existing entry (PATCH /api/savings/{id}/)
+  const [editTarget, setEditTarget] = useState<{ entry: SavingsEntry; memberId: number } | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editComment, setEditComment] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Delete an existing entry (DELETE /api/savings/{id}/)
+  const [deleteTarget, setDeleteTarget] = useState<{ entry: SavingsEntry; memberId: number } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [recentAmounts, setRecentAmounts] = useState<{ [id: number]: number[] }>({});
 
@@ -266,38 +273,73 @@ const loadMemberDetail = async (memberId: number) => {
     }
   };
 
-  // ── One-click correction: records an adjustment, never deletes ─────────────
-  const openCorrection = (entry: SavingsEntry, memberId: number) => {
-    setCorrectTarget({ entry, memberId });
-    setCorrectAmount(String(Number(entry.amount)));
-    setCorrectReason('');
-    setCorrectError(null);
+  // ── Edit an existing entry (real update, not a correction record) ─────────
+  const openEdit = (entry: SavingsEntry, memberId: number) => {
+    setEditTarget({ entry, memberId });
+    setEditDate(toISODate(entry.date));
+    setEditAmount(String(Number(entry.amount)));
+    setEditComment(entry.comment || '');
+    setEditError(null);
   };
 
-  const closeCorrection = () => { setCorrectTarget(null); setCorrectError(null); };
+  const closeEdit = () => { setEditTarget(null); setEditError(null); };
 
-  const handleCorrectConfirm = async () => {
-    if (!correctTarget) return;
-    const newAmount = parseFloat(correctAmount);
-    if (isNaN(newAmount) || newAmount < 0) { setCorrectError('Enter the correct amount (0 or more).'); return; }
-    if (!correctReason.trim()) { setCorrectError('Say why this is being corrected.'); return; }
-    if (newAmount === Number(correctTarget.entry.amount)) { setCorrectError('The amount is unchanged.'); return; }
+  const handleEditConfirm = async () => {
+    if (!editTarget) return;
+    const amount = parseFloat(editAmount);
+    if (!editDate) { setEditError('Date is required.'); return; }
+    if (isNaN(amount) || amount <= 0) { setEditError('Enter a valid amount greater than 0.'); return; }
+    if (!activeCycle) { setEditError('No active cycle found.'); return; }
     try {
-      setCorrecting(true);
-      setCorrectError(null);
-      await addSavingsService.correctSavingsEntry(correctTarget.entry.id, {
-        correct_amount: newAmount,
-        reason: correctReason.trim(),
+      setEditing(true);
+      setEditError(null);
+      await addSavingsService.updateSavingsEntry(editTarget.entry.id, {
+        // member/cycle included because the backend's update() re-validates
+        // with the full create serializer (no partial=True) — see
+        // addSavingsService.updateSavingsEntry for details.
+        member: editTarget.memberId,
+        cycle: activeCycle.id,
+        amount,
+        date: editDate,
+        comment: editComment.trim(),
       });
-      await loadMemberDetail(correctTarget.memberId);
+      await loadMemberDetail(editTarget.memberId);
       window.dispatchEvent(new Event('savings-updated'));
-      setSuccessMessage('Correction recorded. The original entry is kept in the history.');
+      setSuccessMessage('Entry updated.');
       setTimeout(() => setSuccessMessage(null), 5000);
-      closeCorrection();
+      closeEdit();
     } catch (err: any) {
-      setCorrectError(err.message || 'Failed to record the correction.');
+      setEditError(err.message || 'Failed to update entry.');
     } finally {
-      setCorrecting(false);
+      setEditing(false);
+    }
+  };
+
+  // ── Delete an existing entry ───────────────────────────────────────────────
+  const openDelete = (entry: SavingsEntry, memberId: number) => {
+    setDeleteTarget({ entry, memberId });
+    setDeleteError(null);
+  };
+
+  const closeDelete = () => { setDeleteTarget(null); setDeleteError(null); };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    try {
+      setDeleting(true);
+      setDeleteError(null);
+      await addSavingsService.deleteSavingsEntry(deleteTarget.entry.id);
+      await loadMemberDetail(deleteTarget.memberId);
+      window.dispatchEvent(new Event('savings-updated'));
+      setSuccessMessage('Entry deleted.');
+      setTimeout(() => setSuccessMessage(null), 5000);
+      closeDelete();
+    } catch (err: any) {
+      // Surfaces the backend's withdrawal guard message verbatim when it
+      // blocks deletion of an entry a withdrawal has already drawn from.
+      setDeleteError(err.message || 'Failed to delete entry.');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -703,7 +745,7 @@ const loadMemberDetail = async (memberId: number) => {
                                         <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: tokens.color.primary, py: 0.75, width: 90 }}>Date</TableCell>
                                         <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.72rem', color: tokens.color.primary, py: 0.75 }}>Amount</TableCell>
                                         <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: tokens.color.primary, py: 0.75 }}>Note</TableCell>
-                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.72rem', color: tokens.color.primary, py: 0.75, width: 40 }}>Fix</TableCell>
+                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.72rem', color: tokens.color.primary, py: 0.75, width: 64 }}>Actions</TableCell>
                                       </TableRow>
                                     </TableHead>
                                     <TableBody>
@@ -727,17 +769,26 @@ const loadMemberDetail = async (memberId: number) => {
                                               {entry.comment || '—'}
                                             </TableCell>
                                             <TableCell align="center" sx={{ py: 0.75, pr: 0.5 }}>
-                                              {!entry.is_adjustment && (
-                                                <Tooltip title="Correct this entry">
+                                              <Box sx={{ display: 'flex', gap: 0.25, justifyContent: 'center' }}>
+                                                <Tooltip title="Edit entry">
                                                   <IconButton
-                                                    size="small" aria-label="Correct entry"
-                                                    onClick={() => openCorrection(entry, member.id)}
+                                                    size="small" aria-label="Edit entry"
+                                                    onClick={() => openEdit(entry, member.id)}
                                                     sx={{ p: 0.25, color: tokens.color.primary, '&:hover': { bgcolor: tokens.color.primaryPale } }}
                                                   >
                                                     <Edit sx={{ fontSize: 15 }} />
                                                   </IconButton>
                                                 </Tooltip>
-                                              )}
+                                                <Tooltip title="Delete entry">
+                                                  <IconButton
+                                                    size="small" aria-label="Delete entry"
+                                                    onClick={() => openDelete(entry, member.id)}
+                                                    sx={{ p: 0.25, color: tokens.color.danger, '&:hover': { bgcolor: tokens.color.surfaceAlt } }}
+                                                  >
+                                                    <DeleteIcon sx={{ fontSize: 15 }} />
+                                                  </IconButton>
+                                                </Tooltip>
+                                              </Box>
                                             </TableCell>
                                           </TableRow>
                                         );
@@ -759,42 +810,63 @@ const loadMemberDetail = async (memberId: number) => {
         </Paper>
       </Box>
 
-      {/* Correction dialog (replaces delete) */}
-      <Dialog open={!!correctTarget} onClose={correcting ? undefined : closeCorrection} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: tokens.radius.xxl } }}>
-        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: tokens.color.textDark }}>Correct this entry</DialogTitle>
+      {/* Edit dialog */}
+      <Dialog open={!!editTarget} onClose={editing ? undefined : closeEdit} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: tokens.radius.xxl } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: tokens.color.textDark }}>Edit entry</DialogTitle>
         <DialogContent>
-          <DialogContentText sx={{ fontSize: '0.85rem', color: tokens.color.textMid, mb: 1.5 }}>
-            The original entry stays in the history. Only the difference is recorded, as an adjustment.
-          </DialogContentText>
-          {correctTarget && (
-            <Box sx={{ mb: 2, p: 1.5, bgcolor: tokens.color.surfaceAlt, borderRadius: tokens.radius.md, border: `1px solid ${tokens.color.border}` }}>
-              <Typography sx={{ fontSize: '0.83rem', color: tokens.color.textDark }}><b>Recorded:</b> {formatCurrency(correctTarget.entry.amount)}</Typography>
-              <Typography sx={{ fontSize: '0.83rem', mt: 0.5, color: tokens.color.textDark }}><b>Date:</b> {formatDate(correctTarget.entry.date)}</Typography>
-            </Box>
-          )}
-          {correctError && <Alert severity="error" sx={{ mb: 1.5, py: 0.5, fontSize: '0.8rem', borderRadius: tokens.radius.md }}>{correctError}</Alert>}
+          {editError && <Alert severity="error" sx={{ mb: 1.5, py: 0.5, fontSize: '0.8rem', borderRadius: tokens.radius.md }}>{editError}</Alert>}
           <TextField
-            label="Correct amount (UGX)" value={correctAmount} size="small" fullWidth sx={{ mb: 1.5 }}
-            onChange={(e) => setCorrectAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+            label="Date" type="date" value={editDate}
+            onChange={(e) => setEditDate(e.target.value)}
+            InputLabelProps={{ shrink: true }} size="small" fullWidth sx={{ mb: 1.5 }}
             InputProps={{ sx: inputSx }}
-            helperText={
-              correctTarget && correctAmount !== '' && !isNaN(parseFloat(correctAmount))
-                ? `Adjustment: ${parseFloat(correctAmount) - Number(correctTarget.entry.amount) >= 0 ? '+' : '−'}${formatCurrency(Math.abs(parseFloat(correctAmount) - Number(correctTarget.entry.amount)))}`
-                : undefined
-            }
           />
           <TextField
-            label="Reason" value={correctReason} size="small" fullWidth placeholder="e.g. Typed 50,000 instead of 5,000"
-            onChange={(e) => setCorrectReason(e.target.value)} InputProps={{ sx: inputSx }}
+            label="Amount (UGX)" value={editAmount} size="small" fullWidth sx={{ mb: 1.5 }}
+            onChange={(e) => setEditAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+            InputProps={{
+              sx: inputSx,
+              startAdornment: (<InputAdornment position="start"><Typography sx={{ fontSize: '0.8rem', color: tokens.color.textMuted }}>UGX</Typography></InputAdornment>),
+            }}
+          />
+          <TextField
+            label="Comment (optional)" value={editComment} size="small" fullWidth placeholder="e.g. Monthly deposit"
+            onChange={(e) => setEditComment(e.target.value)} InputProps={{ sx: inputSx }}
           />
         </DialogContent>
         <DialogActions sx={{ px: 2.5, pb: 2 }}>
-          <Button onClick={closeCorrection} disabled={correcting} sx={{ textTransform: 'none', fontWeight: 600, color: tokens.color.textMid, fontSize: '0.85rem' }}>Cancel</Button>
+          <Button onClick={closeEdit} disabled={editing} sx={{ textTransform: 'none', fontWeight: 600, color: tokens.color.textMid, fontSize: '0.85rem' }}>Cancel</Button>
           <Button
-            onClick={handleCorrectConfirm} variant="contained" disabled={correcting}
+            onClick={handleEditConfirm} variant="contained" disabled={editing}
             sx={{ bgcolor: tokens.color.primary, '&:hover': { bgcolor: tokens.color.secondary }, textTransform: 'none', fontWeight: 700, borderRadius: tokens.radius.md, fontSize: '0.85rem', boxShadow: 'none' }}
           >
-            {correcting ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : 'Record correction'}
+            {editing ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : 'Save changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onClose={deleting ? undefined : closeDelete} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: tokens.radius.xxl } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: tokens.color.textDark }}>Delete this entry?</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ fontSize: '0.85rem', color: tokens.color.textMid, mb: 1.5 }}>
+            This permanently removes the entry. This can't be undone.
+          </DialogContentText>
+          {deleteTarget && (
+            <Box sx={{ mb: 1.5, p: 1.5, bgcolor: tokens.color.surfaceAlt, borderRadius: tokens.radius.md, border: `1px solid ${tokens.color.border}` }}>
+              <Typography sx={{ fontSize: '0.83rem', color: tokens.color.textDark }}><b>Amount:</b> {formatCurrency(deleteTarget.entry.amount)}</Typography>
+              <Typography sx={{ fontSize: '0.83rem', mt: 0.5, color: tokens.color.textDark }}><b>Date:</b> {formatDate(deleteTarget.entry.date)}</Typography>
+            </Box>
+          )}
+          {deleteError && <Alert severity="error" sx={{ mb: 0.5, py: 0.5, fontSize: '0.8rem', borderRadius: tokens.radius.md }}>{deleteError}</Alert>}
+        </DialogContent>
+        <DialogActions sx={{ px: 2.5, pb: 2 }}>
+          <Button onClick={closeDelete} disabled={deleting} sx={{ textTransform: 'none', fontWeight: 600, color: tokens.color.textMid, fontSize: '0.85rem' }}>Cancel</Button>
+          <Button
+            onClick={handleDeleteConfirm} variant="contained" color="error" disabled={deleting}
+            sx={{ textTransform: 'none', fontWeight: 700, borderRadius: tokens.radius.md, fontSize: '0.85rem', boxShadow: 'none' }}
+          >
+            {deleting ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

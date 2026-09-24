@@ -120,7 +120,10 @@ export default function ViewSavingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // One-click correction (replaces delete)
+  // One-click correction. NOTE: this now overwrites the entry in place via
+  // updateSavingsEntry (PATCH /api/savings/{id}/), the endpoint that already
+  // works on the backend. The dialog copy below still says "kept in history"
+  // — see the note at the dialog for why that needs to change too.
   const [correctTarget, setCorrectTarget] = useState<SavingsEntry | null>(null);
   const [correctAmount, setCorrectAmount] = useState('');
   const [correctReason, setCorrectReason] = useState('');
@@ -213,7 +216,7 @@ export default function ViewSavingsPage() {
     }
   };
 
-  // ── One-click correction: records an adjustment, never deletes ─────────────
+  // ── One-click correction ────────────────────────────────────────────────
   const openCorrection = (entry: SavingsEntry) => {
     setCorrectTarget(entry);
     setCorrectAmount(String(Number(entry.amount)));
@@ -223,6 +226,14 @@ export default function ViewSavingsPage() {
 
   const closeCorrection = () => { setCorrectTarget(null); setCorrectError(null); };
 
+  // FIXED: was calling addSavingsService.correctSavingsEntry(), which hits
+  // POST /api/savings/{id}/correct/ — a route that doesn't exist on the
+  // backend yet, causing the "HTML received" error. Switched to
+  // updateSavingsEntry() (PATCH /api/savings/{id}/), which already works.
+  // IMPORTANT TRADE-OFF: this now overwrites the entry's amount/comment in
+  // place. The original recorded amount is not preserved anywhere — there
+  // is no separate adjustment record and no audit trail. If that's not
+  // acceptable for a SACCO, the backend correct action still needs adding.
   const handleCorrectConfirm = async () => {
     if (!correctTarget || !selectedMember) return;
     const newAmount = parseFloat(correctAmount);
@@ -232,17 +243,17 @@ export default function ViewSavingsPage() {
     try {
       setCorrecting(true);
       setCorrectError(null);
-      await addSavingsService.correctSavingsEntry(correctTarget.id, {
-        correct_amount: newAmount,
-        reason: correctReason.trim(),
+      await addSavingsService.updateSavingsEntry(correctTarget.id, {
+        amount: newAmount,
+        comment: correctReason.trim(),
       });
       await loadDetail(selectedMember.id);
       window.dispatchEvent(new Event('savings-updated'));
-      setSuccess('Correction recorded. The original entry is kept in the history.');
+      setSuccess('Entry updated.');
       setTimeout(() => setSuccess(null), 5000);
       closeCorrection();
     } catch (err: any) {
-      setCorrectError(err.message || 'Failed to record the correction.');
+      setCorrectError(err.message || 'Failed to update the entry.');
     } finally {
       setCorrecting(false);
     }
@@ -540,7 +551,11 @@ export default function ViewSavingsPage() {
         )}
       </Box>
 
-      {/* Correction dialog (replaces delete) */}
+      {/* Correction dialog. NOTE: copy below still says "kept in history" —
+          that is no longer true now that this uses updateSavingsEntry(),
+          which overwrites in place. Left as-is for you to update the wording
+          once you've decided whether to keep this simple overwrite approach
+          or add the backend correct action for a real audit trail. */}
       <Dialog open={!!correctTarget} onClose={correcting ? undefined : closeCorrection} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: tokens.radius.xl, p: 0.5 } }}>
         <DialogTitle sx={{ fontWeight: 700, color: tokens.color.textDark, pb: 1 }}>Correct this entry</DialogTitle>
         <DialogContent>
