@@ -6,6 +6,7 @@ import {
 import { dashboardService } from '../services/dashboardService';
 import { collectorSummaryService } from '../services/collectorSummaryService';
 import { cyclesService } from '../services/cyclesService';
+import { viewSavingsService } from '../services/viewSavingsService';
 import type {
   DashboardStats, SavingsTrend,
   WeeklyDeposit, RecentTransaction, TopSaver,
@@ -164,6 +165,14 @@ interface BalanceModel {
 
 const ZERO_OVERALL = { total_saved: 0, total_withdrawn: 0, net_balance: 0, total_profit: 0, members_count: 0, entries_count: 0 };
 
+// Same normalization the (correct) Member Savings page uses — pulls
+// brought_forward straight off each member record instead of deriving
+// it by subtracting two independently-fetched aggregates.
+const toNum = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
 const SavingsDashboard = () => {
   const [stats, setStats] = useState<DashboardStatsV2 | null>(null);
   const [savingsTrendData, setSavingsTrendData] = useState<SavingsTrend[]>([]);
@@ -213,6 +222,15 @@ const SavingsDashboard = () => {
     }
   }, []);
 
+  // FIXED: brought forward used to be derived as
+  // (all_time.net_balance - cycle.net_balance), two separately-fetched
+  // collector-summary aggregates. Whenever those two endpoints scoped
+  // entries even slightly differently (deactivated collectors,
+  // unassigned entries, adjustments), the subtraction produced a
+  // phantom balance with no real transaction behind it.
+  // Now brought_forward is summed directly off each member record —
+  // the same source ViewSavingsPage already uses and reconciles
+  // correctly — so it can never drift from reality.
   const fetchBalances = useCallback(async (cycleId: string | null) => {
     if (!cycleId) {
       setBalances(null);
@@ -220,18 +238,36 @@ const SavingsDashboard = () => {
     }
     try {
       setBalancesLoading(true);
-      const [cycleSummary, all] = await Promise.all([
+      const [cycleSummary, membersData] = await Promise.all([
         collectorSummaryService.getAllCollectorsSummary({ type: 'cycle', cycleId }),
-        collectorSummaryService.getAllCollectorsSummary({ type: 'all_time' }),
+        viewSavingsService.getMembersWithSavings(),
       ]);
-      const monthNet = cycleSummary.overall.net_balance;
-      const lifetimeBalance = all.overall.net_balance;
+
+      const raw: any[] = Array.isArray(membersData)
+        ? membersData
+        : (membersData as any)?.members || (membersData as any)?.results || (membersData as any)?.data || [];
+
+      let broughtForward = 0;
+      let lifetimeBalance = 0;
+      for (const m of raw) {
+        const bf = m.brought_forward ?? m.carry_forward;
+        const thisMonth = toNum(
+          m.this_month ?? m.balance_this_month ?? m.balance ??
+          (toNum(m.total_savings) - toNum(m.total_withdrawn))
+        );
+        const explicitTotal = m.total_balance ?? m.net_balance_lifetime ?? m.lifetime_balance;
+        const bfNum = bf != null ? toNum(bf) : (explicitTotal != null ? toNum(explicitTotal) - thisMonth : 0);
+        const totalNum = explicitTotal != null ? toNum(explicitTotal) : bfNum + thisMonth;
+        broughtForward += bfNum;
+        lifetimeBalance += totalNum;
+      }
+
       setBalances({
         monthDeposits: cycleSummary.overall.total_saved,
         monthWithdrawn: cycleSummary.overall.total_withdrawn,
-        monthNet,
+        monthNet: cycleSummary.overall.net_balance,
         lifetimeBalance,
-        broughtForward: lifetimeBalance - monthNet,
+        broughtForward,
       });
     } catch (err) {
       console.error('Failed to fetch balance breakdown', err);
