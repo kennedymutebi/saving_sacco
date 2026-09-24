@@ -8,6 +8,11 @@ export interface Member {
   membership_id: string;
   total_savings: number;
   total_withdrawn?: number;
+  brought_forward?: number;
+  this_month?: number;
+  total_balance?: number;
+  collector_id?: number | null;
+  collector_name?: string | null;
 }
 
 export interface SavingsEntry {
@@ -22,6 +27,7 @@ export interface SavingsEntry {
   comment: string;
   created_at?: string;
   updated_at?: string;
+  is_adjustment?: boolean;
 }
 
 export interface CreateSavingsData {
@@ -31,6 +37,10 @@ export interface CreateSavingsData {
   date: string;
   comment?: string;
   send_sms?: boolean;
+}
+export interface CorrectSavingsData {
+  correct_amount: number;
+  reason: string;
 }
 
 export interface UpdateSavingsData {
@@ -49,12 +59,10 @@ export interface SavingsCycle {
 }
 
 class AddSavingsService {
-  // Helper to get auth token
   private getAuthToken(): string | null {
     return localStorage.getItem('access_token');
   }
 
-  // Helper to make authenticated requests
   private async fetchWithAuth(
     endpoint: string,
     method: string = 'GET',
@@ -82,13 +90,11 @@ class AddSavingsService {
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
 
-    // For DELETE requests, 204 No Content is success
     if (method === 'DELETE' && response.status === 204) {
       console.log('DELETE request successful (204 No Content)');
       return null;
     }
 
-    // Check if response is HTML → means server error / wrong URL
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('text/html')) {
       throw new Error(
@@ -101,12 +107,10 @@ class AddSavingsService {
     console.log(`Add Savings API ${method} ${endpoint}:`, response.status, data);
 
     if (!response.ok) {
-      // Log full error details
       console.error('API Error Details:', data);
-      
-      // Handle different error formats
+
       let errorMessage = 'API request failed';
-      
+
       if (typeof data === 'string') {
         errorMessage = data;
       } else if (data.detail) {
@@ -116,34 +120,32 @@ class AddSavingsService {
       } else if (data.error) {
         errorMessage = data.error;
       } else {
-        // If there are field-specific errors, extract them
         const fieldErrors = Object.keys(data)
           .filter(key => Array.isArray(data[key]) || typeof data[key] === 'string')
           .map(key => `${key}: ${Array.isArray(data[key]) ? data[key].join(', ') : data[key]}`)
           .join('; ');
-        
+
         if (fieldErrors) {
           errorMessage = fieldErrors;
         }
       }
-      
+
       throw new Error(errorMessage);
     }
 
     return data;
   }
 
-  // Get all members with their total savings
   async getMembers(): Promise<Member[]> {
     try {
       const data = await this.fetchWithAuth('/api/savings/view-savings/members/');
       console.log('Members fetched successfully');
-      
+
       const dataObj = data as any;
       if (dataObj.error && dataObj.members && dataObj.members.length === 0) {
         throw new Error(dataObj.error + '. Please create an active savings cycle first.');
       }
-      
+
       return dataObj.members || dataObj.results || dataObj.data || [];
     } catch (error) {
       console.error('Error fetching members:', error);
@@ -151,28 +153,30 @@ class AddSavingsService {
     }
   }
 
-  // Get active savings cycle
-async getActiveCycle(): Promise<SavingsCycle | null> {
-  try {
-    const data = await this.fetchWithAuth('/api/cycles/active/');
-    return data;
-  } catch (error: any) {
-    // The backend returns 404 when there's genuinely no active cycle —
-    // that's a valid state, not an error, so don't throw for it.
-    if (error.message?.includes('404') || error.message?.includes('No active cycle')) {
-      console.log('No active cycle currently set');
-      return null;
+  async getActiveCycle(): Promise<SavingsCycle | null> {
+    try {
+      const data = await this.fetchWithAuth('/api/cycles/active/');
+      return data;
+    } catch (error: any) {
+      if (error.message?.includes('404') || error.message?.includes('No active cycle')) {
+        console.log('No active cycle currently set');
+        return null;
+      }
+      console.error('Error fetching active cycle:', error);
+      throw error;
     }
-    console.error('Error fetching active cycle:', error);
-    throw error;
   }
-}
 
-  // Create a new savings entry
+  // FIXED: was '/api/savings/savings/' — savings/urls.py mounts
+  // SavingsEntryViewSet at an EMPTY prefix ('') and that router is
+  // already included under 'api/savings/' in the project's urls.py, so
+  // the real endpoint is just '/api/savings/'. The doubled 'savings/'
+  // matched no route SavingsEntryViewSet.create actually serves, hence
+  // the 405.
   async createSavingsEntry(savingsData: CreateSavingsData): Promise<SavingsEntry> {
     try {
       const data = await this.fetchWithAuth(
-        '/api/savings/savings/',
+        '/api/savings/',
         'POST',
         savingsData
       );
@@ -184,11 +188,11 @@ async getActiveCycle(): Promise<SavingsCycle | null> {
     }
   }
 
-  // Update an existing savings entry
+  // FIXED: same doubled-prefix bug — was '/api/savings/savings/{id}/'.
   async updateSavingsEntry(savingsId: number, savingsData: UpdateSavingsData): Promise<SavingsEntry> {
     try {
       const data = await this.fetchWithAuth(
-        `/api/savings/savings/${savingsId}/`,
+        `/api/savings/${savingsId}/`,
         'PATCH',
         savingsData
       );
@@ -200,11 +204,11 @@ async getActiveCycle(): Promise<SavingsCycle | null> {
     }
   }
 
-  // Delete a savings entry
+  // FIXED: same doubled-prefix bug.
   async deleteSavingsEntry(savingsId: number): Promise<void> {
     try {
       await this.fetchWithAuth(
-        `/api/savings/savings/${savingsId}/`,
+        `/api/savings/${savingsId}/`,
         'DELETE'
       );
       console.log('Savings entry deleted successfully');
@@ -214,10 +218,25 @@ async getActiveCycle(): Promise<SavingsCycle | null> {
     }
   }
 
-  // Get a single savings entry by ID
+  // FIXED: same doubled-prefix bug.
+  async correctSavingsEntry(savingsId: number, data: CorrectSavingsData): Promise<SavingsEntry> {
+    try {
+      const result = await this.fetchWithAuth(
+        `/api/savings/${savingsId}/correct/`,
+        'POST',
+        data
+      );
+      return result;
+    } catch (error) {
+      console.error('Error correcting savings entry:', error);
+      throw error;
+    }
+  }
+
+  // FIXED: same doubled-prefix bug.
   async getSavingsEntry(savingsId: number): Promise<SavingsEntry> {
     try {
-      const data = await this.fetchWithAuth(`/api/savings/savings/${savingsId}/`);
+      const data = await this.fetchWithAuth(`/api/savings/${savingsId}/`);
       console.log('Savings entry fetched successfully');
       return data;
     } catch (error) {
@@ -226,19 +245,18 @@ async getActiveCycle(): Promise<SavingsCycle | null> {
     }
   }
 
-  // Get recent savings entries
+  // FIXED: same doubled-prefix bug.
   async getRecentSavings(limit: number = 10): Promise<SavingsEntry[]> {
     try {
-      const data = await this.fetchWithAuth(`/api/savings/savings/?limit=${limit}`);
+      const data = await this.fetchWithAuth(`/api/savings/?limit=${limit}`);
       console.log('Recent savings fetched successfully');
-      
-      // API returns array directly or paginated results
+
       if (Array.isArray(data)) {
         return data;
       } else if (data && typeof data === 'object') {
         return data.results || data.data || [];
       }
-      
+
       return [];
     } catch (error) {
       console.error('Error fetching recent savings:', error);
@@ -246,7 +264,6 @@ async getActiveCycle(): Promise<SavingsCycle | null> {
     }
   }
 
-  // Check if user is authenticated
   isAuthenticated(): boolean {
     const token = this.getAuthToken();
     console.log('Checking add savings authentication, token:', token ? 'exists' : 'missing');

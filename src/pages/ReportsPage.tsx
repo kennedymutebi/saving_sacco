@@ -11,9 +11,23 @@ import {
   Search, Description, PictureAsPdf, TableChart, NotificationsNone,
   CalendarToday, Person, Groups, DownloadDone,
 } from '@mui/icons-material';
-import { reportsService } from '../services/reportsService';
+
+import reportsService from '../services/reportsService';
 import type { SavingsCycle, MemberSearchResult, CollectorOption } from '../services/reportsService';
 import { tokens } from '../config/theme';
+
+// Report builders — everything below this line is new vs. the old
+// blob-download version. Django hands back numbers; these turn numbers
+// into a styled, branded file entirely in the browser.
+
+import { buildCycleWorkbook } from '../reports/excel/cycleWorkbook';
+import { buildMemberWorkbook } from '../reports/excel/memberWorkbook';
+import { buildCollectorWorkbook } from '../reports/excel/collectorWorkbook';
+import { buildAllCollectorsWorkbook } from '../reports/excel/allCollectorsWorkbook';
+import { CycleReportDocument } from '../reports/pdf/components/CycleReportDocument';
+import { CollectorSummaryDocument } from '../reports/pdf/components/CollectorSummaryDocument';
+import { MemberStatementDocument } from '../reports/pdf/components/MemberStatementDocument';
+import { downloadPdf } from '../reports/pdf/components/downloadPdf';
 
 const inputSx = {
   '& .MuiOutlinedInput-root': {
@@ -238,14 +252,17 @@ export default function ReportsPage() {
               {
                 label: 'Excel', icon: <TableChart sx={{ fontSize: 16 }} />, loading: cycleExcelLoading,
                 onClick: () => runDownload(
-                  () => reportsService.downloadCycleExcel(cycleIdParam),
+                  async () => buildCycleWorkbook(await reportsService.getCycleReport(cycleIdParam)),
                   setCycleExcelLoading, 'Cycle report (Excel) downloaded.'
                 ),
               },
               {
                 label: 'PDF', icon: <PictureAsPdf sx={{ fontSize: 16 }} />, loading: cyclePdfLoading,
                 onClick: () => runDownload(
-                  () => reportsService.downloadCyclePdf(cycleIdParam),
+                  async () => {
+                    const data = await reportsService.getCycleReport(cycleIdParam);
+                    await downloadPdf(<CycleReportDocument data={data} />, `${data.cycle_name}_cycle_report.pdf`);
+                  },
                   setCyclePdfLoading, 'Cycle report (PDF) downloaded.'
                 ),
               },
@@ -304,14 +321,17 @@ export default function ReportsPage() {
               {
                 label: 'Excel', icon: <TableChart sx={{ fontSize: 16 }} />, loading: memberExcelLoading,
                 onClick: () => selectedMember && runDownload(
-                  () => reportsService.downloadMemberHistoryExcel(selectedMember.id),
+                  async () => buildMemberWorkbook(await reportsService.getMemberStatement(selectedMember.id)),
                   setMemberExcelLoading, `${selectedMember.name}'s statement (Excel) downloaded.`
                 ),
               },
               {
                 label: 'PDF', icon: <PictureAsPdf sx={{ fontSize: 16 }} />, loading: memberPdfLoading,
                 onClick: () => selectedMember && runDownload(
-                  () => reportsService.downloadMemberStatementPdf(selectedMember.id),
+                  async () => {
+                    const data = await reportsService.getMemberStatement(selectedMember.id);
+                    await downloadPdf(<MemberStatementDocument data={data} />, `${data.member_name}_statement.pdf`);
+                  },
                   setMemberPdfLoading, `${selectedMember.name}'s statement (PDF) downloaded.`
                 ),
               },
@@ -377,14 +397,19 @@ export default function ReportsPage() {
               {
                 label: 'Excel', icon: <TableChart sx={{ fontSize: 16 }} />, loading: collectorExcelLoading,
                 onClick: () => selectedCollectorId && runDownload(
-                  () => reportsService.downloadCollectorExcel(Number(selectedCollectorId), collectorCycleIdParam),
+                  async () => buildCollectorWorkbook(
+                    await reportsService.getCollectorSummary(Number(selectedCollectorId), collectorCycleIdParam)
+                  ),
                   setCollectorExcelLoading, 'Collector summary (Excel) downloaded.'
                 ),
               },
               {
                 label: 'PDF', icon: <PictureAsPdf sx={{ fontSize: 16 }} />, loading: collectorPdfLoading,
                 onClick: () => selectedCollectorId && runDownload(
-                  () => reportsService.downloadCollectorPdf(Number(selectedCollectorId), collectorCycleIdParam),
+                  async () => {
+                    const data = await reportsService.getCollectorSummary(Number(selectedCollectorId), collectorCycleIdParam);
+                    await downloadPdf(<CollectorSummaryDocument data={data} />, `${data.collector_name}_summary.pdf`);
+                  },
                   setCollectorPdfLoading, 'Collector summary (PDF) downloaded.'
                 ),
               },
@@ -425,7 +450,7 @@ export default function ReportsPage() {
               {
                 label: 'Excel', icon: <TableChart sx={{ fontSize: 16 }} />, loading: allCollectorsLoading,
                 onClick: () => runDownload(
-                  () => reportsService.downloadAllCollectorsExcel(allCollectorsCycleIdParam),
+                  async () => buildAllCollectorsWorkbook(await reportsService.getAllCollectorsSummary(allCollectorsCycleIdParam)),
                   setAllCollectorsLoading, 'All-collectors summary (Excel) downloaded.'
                 ),
               },

@@ -17,11 +17,17 @@ export interface CollectorSummary {
   net_balance: number;
   members_count: number;
   entries_count: number;
+  total_profit: number;
 }
 
+// FIXED: 'month' (calendar YYYY-MM) replaced with 'cycle' (actual
+// SavingsCycle id). A calendar month and a savings cycle are not the
+// same period unless the cycle happens to start on the 1st — using
+// calendar month mixed old and new cycles' entries together whenever
+// they landed.
 export type SummaryPeriod =
   | { type: 'today' }
-  | { type: 'month'; month: string }   // YYYY-MM
+  | { type: 'cycle'; cycleId: string }
   | { type: 'all_time' };
 
 class CollectorSummaryService {
@@ -59,17 +65,23 @@ class CollectorSummaryService {
     let query = '';
     if (period.type === 'today') {
       query = `?date=${new Date().toISOString().split('T')[0]}`;
-    } else if (period.type === 'month') {
-      query = `?month=${period.month}`;
+    } else if (period.type === 'cycle') {
+      query = `?cycle=${period.cycleId}`;
     }
     // 'all_time' → no query params at all
     return this.fetchWithAuth(`/api/savings/collectors/${collectorId}/summary/${query}`);
   }
 
-  // Fetches every collector's summary for the given period, plus an overall total
   async getAllCollectorsSummary(period: SummaryPeriod): Promise<{
     collectors: CollectorSummary[];
-    overall: { total_saved: number; total_withdrawn: number; net_balance: number; members_count: number; entries_count: number };
+    overall: {
+      total_saved: number;
+      total_withdrawn: number;
+      net_balance: number;
+      total_profit: number;
+      members_count: number;
+      entries_count: number;
+    };
   }> {
     const collectors = await this.getCollectors();
 
@@ -83,6 +95,7 @@ class CollectorSummaryService {
             total_saved: 0,
             total_withdrawn: 0,
             net_balance: 0,
+            total_profit: 0,
             members_count: 0,
             entries_count: 0,
           } as CollectorSummary;
@@ -92,16 +105,17 @@ class CollectorSummaryService {
 
     const overall = summaries.reduce(
       (acc, s) => ({
-        total_saved: acc.total_saved + s.total_saved,
-        total_withdrawn: acc.total_withdrawn + s.total_withdrawn,
-        net_balance: acc.net_balance + s.net_balance,
-        members_count: acc.members_count + s.members_count,
-        entries_count: acc.entries_count + s.entries_count,
+        total_saved: acc.total_saved + (s.total_saved || 0),
+        total_withdrawn: acc.total_withdrawn + (s.total_withdrawn || 0),
+        net_balance: acc.net_balance + (s.net_balance || 0),
+        total_profit: acc.total_profit + (s.total_profit || 0),
+        members_count: acc.members_count + (s.members_count || 0),
+        entries_count: acc.entries_count + (s.entries_count || 0),
       }),
-      { total_saved: 0, total_withdrawn: 0, net_balance: 0, members_count: 0, entries_count: 0 }
+      { total_saved: 0, total_withdrawn: 0, net_balance: 0, total_profit: 0, members_count: 0, entries_count: 0 }
     );
 
-    summaries.sort((a, b) => b.total_saved - a.total_saved); // highest collector first
+    summaries.sort((a, b) => b.total_saved - a.total_saved);
 
     return { collectors: summaries, overall };
   }

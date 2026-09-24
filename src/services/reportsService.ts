@@ -1,4 +1,15 @@
 // src/services/reportsService.ts
+//
+// Picker endpoints (getCycles/searchMembers/getCollectors) are unchanged.
+// The old download* methods (which fetched pre-built PDF/Excel blobs) are
+// replaced with getXReportData methods that fetch plain JSON — the actual
+// PDF/Excel file is then built client-side (see ../reports/pdf and
+// ../reports/excel) so backend and frontend can never disagree on a total.
+
+import type { CycleReportData } from '../reports/pdf/components/CycleReportDocument';
+import type { MemberStatementData } from '../reports/pdf/components/MemberStatementDocument';
+import type { CollectorSummaryData } from '../reports/pdf/components/CollectorSummaryDocument';
+import type { AllCollectorsData } from '../reports/excel/allCollectorsWorkbook';
 
 const API_BASE_URL = 'http://84.247.171.71:8082';
 
@@ -54,40 +65,6 @@ class ReportsService {
     return data;
   }
 
-  private async downloadFile(endpoint: string, fallbackFilename: string): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      headers: this.authHeaders(),
-    });
-
-    if (!response.ok) {
-      let message = `Export failed (${response.status})`;
-      try {
-        const data = await response.json();
-        message = data?.error || data?.detail || message;
-      } catch {
-        // response wasn't JSON either — keep the generic message
-      }
-      throw new Error(message);
-    }
-
-    const disposition = response.headers.get('content-disposition');
-    let filename = fallbackFilename;
-    if (disposition) {
-      const match = disposition.match(/filename="?([^"]+)"?/);
-      if (match?.[1]) filename = match[1];
-    }
-
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
-  }
-
   // ── Data for pickers ──────────────────────────────────────────────────
 
   async getCycles(): Promise<SavingsCycle[]> {
@@ -96,8 +73,6 @@ class ReportsService {
   }
 
   // Real endpoint: /api/members/?search=... (same one membersService.getAllMembers uses).
-  // Mapped here to {id, name, membership_id, collector} so ReportsPage doesn't
-  // need to change regardless of which underlying field names the API returns.
   async searchMembers(query: string): Promise<MemberSearchResult[]> {
     if (!query.trim()) return [];
     const data = await this.getJson(`/api/members/?search=${encodeURIComponent(query)}`);
@@ -117,43 +92,27 @@ class ReportsService {
     return list.map((c: any) => ({ id: c.id, name: c.name }));
   }
 
-  // ── Cycle exports ─────────────────────────────────────────────────────
+  // ── Report data (JSON — PDF/Excel are built client-side from these) ────
+  // New backend endpoints, sibling to the old /api/savings/export/... ones.
+  // See report_views.py for the Django side of these four.
 
-  async downloadCycleExcel(cycleId?: number): Promise<void> {
+  async getCycleReport(cycleId?: number): Promise<CycleReportData> {
     const qs = cycleId ? `?cycle_id=${cycleId}` : '';
-    await this.downloadFile(`/api/savings/export/cycle/${qs}`, 'cycle_savings.xlsx');
+    return this.getJson(`/api/savings/report-data/cycle/${qs}`);
   }
 
-  async downloadCyclePdf(cycleId?: number): Promise<void> {
+  async getMemberStatement(memberId: number): Promise<MemberStatementData> {
+    return this.getJson(`/api/savings/report-data/member/${memberId}/`);
+  }
+
+  async getCollectorSummary(collectorId: number, cycleId?: number): Promise<CollectorSummaryData> {
     const qs = cycleId ? `?cycle_id=${cycleId}` : '';
-    await this.downloadFile(`/api/savings/export/cycle/pdf/${qs}`, 'cycle_savings.pdf');
+    return this.getJson(`/api/savings/report-data/collector/${collectorId}/${qs}`);
   }
 
-  // ── Member exports ───────────────────────────────────────────────────
-
-  async downloadMemberHistoryExcel(memberId: number): Promise<void> {
-    await this.downloadFile(`/api/savings/export/member/${memberId}/`, 'member_history.xlsx');
-  }
-
-  async downloadMemberStatementPdf(memberId: number): Promise<void> {
-    await this.downloadFile(`/api/savings/export/member/${memberId}/pdf/`, 'member_statement.pdf');
-  }
-
-  // ── Collector exports ────────────────────────────────────────────────
-
-  async downloadCollectorExcel(collectorId: number, cycleId?: number): Promise<void> {
+  async getAllCollectorsSummary(cycleId?: number): Promise<AllCollectorsData> {
     const qs = cycleId ? `?cycle_id=${cycleId}` : '';
-    await this.downloadFile(`/api/savings/export/collector/${collectorId}/${qs}`, 'collector_summary.xlsx');
-  }
-
-  async downloadCollectorPdf(collectorId: number, cycleId?: number): Promise<void> {
-    const qs = cycleId ? `?cycle_id=${cycleId}` : '';
-    await this.downloadFile(`/api/savings/export/collector/${collectorId}/pdf/${qs}`, 'collector_summary.pdf');
-  }
-
-  async downloadAllCollectorsExcel(cycleId?: number): Promise<void> {
-    const qs = cycleId ? `?cycle_id=${cycleId}` : '';
-    await this.downloadFile(`/api/savings/export/collectors/${qs}`, 'all_collectors_summary.xlsx');
+    return this.getJson(`/api/savings/report-data/collectors/${qs}`);
   }
 }
 

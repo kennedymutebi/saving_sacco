@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import {
   Box,
@@ -145,16 +144,27 @@ interface SideNavbarProps {
 }
 
 const SideNavbar: React.FC<SideNavbarProps> = ({ sideNavActive, handleSideNavActive }) => {
-  const [active, setActive] = useState<string>('dashboard');
   const theme = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const { logout } = useAuth();
 
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const isTablet = useMediaQuery(theme.breakpoints.between('md', 'lg'));
 
-  const handleActive = (id: string) => {
-    setActive(id);
+  // Derive the active nav id from the current URL instead of tracking it in
+  // local state — state can drift from the real route (back/forward, direct
+  // links, redirects, refresh). Sort by path length so a specific route like
+  // '/dashboard/ViewSavingsPage' wins over the generic '/dashboard' match.
+  const active = [...NAV_ITEMS]
+    .sort((a, b) => b.to.length - a.to.length)
+    .find((item) =>
+      item.to === '/dashboard'
+        ? location.pathname === '/dashboard'
+        : location.pathname.startsWith(item.to)
+    )?.id;
+
+  const handleActive = () => {
     if (isMobile || isTablet) handleSideNavActive();
   };
 
@@ -201,8 +211,8 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ sideNavActive, handleSideNavAct
           {/* Logo container */}
           <Box
             sx={{
-              width: 42,
-              height: 42,
+              width: 50,
+              height: 50,
               borderRadius: tokens.radius.md,
               overflow: 'hidden',
               flexShrink: 0,
@@ -214,8 +224,8 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ sideNavActive, handleSideNavAct
             }}
           >
             <img
-              src="/profit-rounded-lines-icon.jpg"
-              alt="MUTA logo"
+              src="/logo.jpg"
+              alt="TDAG logo"
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               onError={(e) => {
                 // fallback to initials if image fails
@@ -233,7 +243,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ sideNavActive, handleSideNavAct
                 lineHeight: 1.1,
               }}
             >
-              MUTA
+              TDAG
             </Typography>
             <Typography sx={{ fontSize: '0.68rem', color: tokens.color.textMuted, mt: 0.1 }}>
               Savings Platform
@@ -304,7 +314,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ sideNavActive, handleSideNavAct
             IconComponent={item.icon}
             isActive={active === item.id}
             to={item.to}
-            onClick={() => handleActive(item.id)}
+            onClick={handleActive}
           />
         ))}
       </Box>

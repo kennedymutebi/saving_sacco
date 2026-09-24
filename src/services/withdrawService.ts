@@ -36,15 +36,51 @@ export interface CreateWithdrawalData {
   reason?: string;
 }
 
+/**
+ * Shape returned by GET /api/savings/view-savings/members/{id}/
+ * (MemberSavingsDetailView). Kept close to the real backend response —
+ * see parseBalance() in WithdrawPage.tsx for which fields it actually
+ * consumes, with legacy fallbacks for older field names.
+ */
 export interface MemberBalance {
   member: {
     id: number;
     name: string;
+    first_name?: string;
+    last_name?: string;
     membership_id: string;
+    initials?: string;
   };
+  cycle?: {
+    name: string;
+    month: string;
+  };
+
   total_lifetime: number;
   total_withdrawn_lifetime: number;
+  net_balance_lifetime: number;
+
+  // WithdrawPage.tsx reads this exact name — Total Balance, what the
+  // withdrawal endpoint validates against.
   net_balance: number;
+
+  total_this_month: number;
+  total_withdrawn_this_month: number;
+  balance_this_month: number;
+
+  carry_forward: number;
+  brought_forward: number;
+
+  // What she's charged this cycle, and the raw amount it's based on.
+  // Deliberately independent of any withdrawal — never changes because
+  // money was withdrawn, only because the collected amount itself
+  // crosses into a different tier.
+  monthly_charge: number;
+  collected_this_month: number;
+
+  entries_count?: number;
+  entries?: any[];
+  withdrawals?: any[];
 }
 
 class WithdrawService {
@@ -110,8 +146,9 @@ class WithdrawService {
     return dataObj.members || dataObj.results || dataObj.data || [];
   }
 
-  // Real available balance — lifetime deposits minus lifetime withdrawals,
-  // matching exactly what CreateWithdrawalSerializer checks server-side.
+  // Full balance + monthly-charge detail for one member, matching exactly
+  // what CreateWithdrawalSerializer checks server-side for the total, plus
+  // the tiered charge for this cycle (see MemberBalance above).
   async getMemberBalance(memberId: number): Promise<MemberBalance> {
     return this.fetchWithAuth(`/api/savings/view-savings/members/${memberId}/`);
   }

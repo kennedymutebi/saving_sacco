@@ -14,7 +14,6 @@ export interface SavingsCycle {
   member_count?: number;
 }
 
-// ✅ UPDATED: Full create/update payload — all fields optional except start_date
 export interface CreateCycleData {
   start_date: string;
   name?: string;
@@ -28,6 +27,17 @@ export interface CycleStatistics {
   upcoming: number;
   closed: number;
   total?: number;
+}
+
+// NEW: matches GET /api/cycles/{id}/close_preview/
+export interface CycleClosePreview {
+  cycle: { id: string; name: string };
+  opening_balance: number;
+  total_saved: number;
+  total_withdrawn: number;
+  closing_balance: number;
+  total_fees: number;
+  members_count: number;
 }
 
 const API_BASE_URL = 'http://84.247.171.71:8082';
@@ -58,7 +68,6 @@ class CyclesService {
       throw new Error(`Invalid response from server (HTML received). Check endpoint: ${endpoint}`);
     }
 
-    // 204 No Content (e.g. DELETE with no body)
     if (response.status === 204) {
       return null;
     }
@@ -83,49 +92,54 @@ class CyclesService {
     return data;
   }
 
- async getAllCycles(): Promise<SavingsCycle[]> {
-  const data = await this.fetchWithAuth('/api/cycles/');
-  if (Array.isArray(data)) return data;
-  if (data && Array.isArray(data.results)) return data.results;
-  if (data?.id) return [data];
-  return [];
-}
+  async getAllCycles(): Promise<SavingsCycle[]> {
+    const data = await this.fetchWithAuth('/api/cycles/');
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.results)) return data.results;
+    if (data?.id) return [data];
+    return [];
+  }
 
-async getCycle(id: string): Promise<SavingsCycle> {
-  return this.fetchWithAuth(`/api/cycles/${id}/`);
-}
+  async getCycle(id: string): Promise<SavingsCycle> {
+    return this.fetchWithAuth(`/api/cycles/${id}/`);
+  }
 
-async getActiveCycle(): Promise<SavingsCycle> {
-  return this.fetchWithAuth('/api/cycles/active/');
-}
+  async getActiveCycle(): Promise<SavingsCycle> {
+    return this.fetchWithAuth('/api/cycles/active/');
+  }
 
-async createCycle(cycleData: CreateCycleData): Promise<SavingsCycle> {
-  return this.fetchWithAuth('/api/cycles/', { method: 'POST', body: JSON.stringify(cycleData) });
-}
+  async createCycle(cycleData: CreateCycleData): Promise<SavingsCycle> {
+    return this.fetchWithAuth('/api/cycles/', { method: 'POST', body: JSON.stringify(cycleData) });
+  }
 
-async updateCycle(id: string, cycleData: CreateCycleData): Promise<SavingsCycle> {
-  return this.fetchWithAuth(`/api/cycles/${id}/`, { method: 'PUT', body: JSON.stringify(cycleData) });
-}
+  async updateCycle(id: string, cycleData: CreateCycleData): Promise<SavingsCycle> {
+    return this.fetchWithAuth(`/api/cycles/${id}/`, { method: 'PUT', body: JSON.stringify(cycleData) });
+  }
 
-async partialUpdateCycle(id: string, cycleData: Partial<CreateCycleData>): Promise<SavingsCycle> {
-  return this.fetchWithAuth(`/api/cycles/${id}/`, { method: 'PATCH', body: JSON.stringify(cycleData) });
-}
+  async partialUpdateCycle(id: string, cycleData: Partial<CreateCycleData>): Promise<SavingsCycle> {
+    return this.fetchWithAuth(`/api/cycles/${id}/`, { method: 'PATCH', body: JSON.stringify(cycleData) });
+  }
 
-async deleteCycle(id: string): Promise<void> {
-  await this.fetchWithAuth(`/api/cycles/${id}/`, { method: 'DELETE' });
-}
+  async deleteCycle(id: string): Promise<void> {
+    await this.fetchWithAuth(`/api/cycles/${id}/`, { method: 'DELETE' });
+  }
 
-async closeCycle(id: string): Promise<SavingsCycle> {
-  return this.fetchWithAuth(`/api/cycles/${id}/close/`, { method: 'POST' });
-}
+  async closeCycle(id: string): Promise<SavingsCycle> {
+    return this.fetchWithAuth(`/api/cycles/${id}/close/`, { method: 'POST' });
+  }
 
-async reopenCycle(id: string): Promise<SavingsCycle> {
-  return this.fetchWithAuth(`/api/cycles/${id}/reopen/`, { method: 'POST' });
-}
+  // NEW: whole-cycle summary shown before confirming close
+  async getClosePreview(id: string): Promise<CycleClosePreview> {
+    return this.fetchWithAuth(`/api/cycles/${id}/close_preview/`);
+  }
 
-async getCycleStatistics(): Promise<CycleStatistics> {
-  return this.fetchWithAuth('/api/cycles/statistics/');
-}
+  async reopenCycle(id: string): Promise<SavingsCycle> {
+    return this.fetchWithAuth(`/api/cycles/${id}/reopen/`, { method: 'POST' });
+  }
+
+  async getCycleStatistics(): Promise<CycleStatistics> {
+    return this.fetchWithAuth('/api/cycles/statistics/');
+  }
 
   isAuthenticated(): boolean {
     return !!this.getAuthToken();
